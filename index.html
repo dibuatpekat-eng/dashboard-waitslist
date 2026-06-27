@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jedda — Launch Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F7F6F4; --surface: #fff; --border: #E8E5E0; --border-strong: #C8C4BE;
+      --text: #1A1917; --text-2: #6B6760; --text-3: #A09C97;
+      --flag: #C0392B; --flag-bg: #FDF2F1; --flag-border: #F5C6C2;
+      --ok: #1A6B3C; --ok-bg: #F0FAF4; --ok-border: #A8DFC0;
+      --warn: #7D5A00; --warn-bg: #FDF8EC; --warn-border: #EDD98A;
+    }
+
+    body {
+      font-family: 'Jost', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── LOGIN ── */
+    #jd-login {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .jd-login-box {
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .jd-login-brand {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 32px;
+    }
+
+    .jd-login-title {
+      font-size: 20px;
+      font-weight: 300;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+
+    .jd-login-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .jd-login-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    .jd-login-input {
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--text);
+      padding: 10px 12px;
+      outline: none;
+      width: 100%;
+    }
+
+    .jd-login-input:focus { border-color: var(--text); }
+
+    .jd-login-btn {
+      font-family: 'Jost', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: var(--text);
+      color: #F7F6F4;
+      border: none;
+      padding: 12px 24px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+
+    .jd-login-btn:hover { opacity: 0.75; }
+
+    .jd-login-error {
+      font-size: 11px;
+      color: var(--flag);
+      margin-top: 10px;
+      display: none;
+    }
+
+    /* ── DASHBOARD ── */
+    #jd-app { display: none; }
+
+    .jd-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .jd-header-brand {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .jd-header-meta {
+      font-size: 11px;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .jd-header-logout {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-family: 'Jost', sans-serif;
+      transition: color 0.15s;
+    }
+
+    .jd-header-logout:hover { color: var(--text); }
+
+    .jd-main { padding: 32px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── STATS ── */
+    .jd-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .jd-stat { background: var(--surface); padding: 20px 24px; }
+    .jd-stat-label { font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+    .jd-stat-value { font-size: 28px; font-weight: 300; letter-spacing: -.02em; }
+    .jd-stat-value.flagged { color: var(--flag); }
+    .jd-stat-value.ok { color: var(--ok); }
+
+    /* ── SECTION ── */
+    .jd-section { background: var(--surface); border: 1px solid var(--border); margin-bottom: 16px; }
+    .jd-section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .jd-section-title { font-size: 10px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
+    .jd-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* ── INPUTS ── */
+    select, input[type="number"] {
+      font-family: 'Jost', sans-serif;
+      font-size: 12px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 10px;
+      outline: none;
+      appearance: none;
+      border-radius: 0;
+    }
+
+    select:focus, input[type="number"]:focus { border-color: var(--text); }
+
+    /* ── BUTTONS ── */
+    .jd-btn {
+      font-family: 'Jost', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      border: none;
+      cursor: pointer;
+      padding: 7px 16px;
+      transition: opacity .15s;
+      border-radius: 0;
+      line-height: 1;
+    }
+
+    .jd-btn:hover { opacity: .75; }
+    .jd-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .jd-btn-dark { background: var(--text); color: #F7F6F4; }
+    .jd-btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border-strong); }
+
+    /* ── BATCH FORM ── */
+    .jd-batch-form { padding: 20px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+    .jd-form-group { display: flex; flex-direction: column; gap: 6px; }
+    .jd-form-label { font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+
+    /* ── TABLE ── */
+    .jd-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; background: none; }
+    td { padding: 11px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg); }
+
+    /* ── BADGES ── */
+    .badge { display: inline-block; font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; }
+    .badge-flag { background: var(--flag-bg); color: var(--flag); border: 1px solid var(--flag-border); }
+    .badge-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+    .badge-pending { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
+    .badge-invited { background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; }
+    .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+    .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
+
+    /* ── PAGINATION ── */
+    .jd-pagination { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .jd-pagination-info { font-size: 11px; color: var(--text-3); }
+    .jd-pagination-controls { display: flex; gap: 4px; }
+
+    /* ── MODAL ── */
+    .jd-modal-overlay { position: fixed; inset: 0; background: rgba(26,25,23,.5); z-index: 9999; display: none; align-items: center; justify-content: center; }
+    .jd-modal-overlay.show { display: flex; }
+    .jd-modal { background: var(--surface); border: 1px solid var(--border); padding: 32px; max-width: 480px; width: calc(100% - 32px); }
+    .jd-modal-title { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 16px; color: var(--text); }
+    .jd-modal-body { font-size: 13px; color: var(--text-2); margin-bottom: 16px; line-height: 1.6; }
+    .jd-token-list { background: var(--bg); border: 1px solid var(--border); padding: 14px; margin-bottom: 20px; max-height: 180px; overflow-y: auto; font-size: 11px; font-family: monospace; line-height: 1.8; white-space: pre; }
+    .jd-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* ── TOAST ── */
+    .jd-toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: #F7F6F4; padding: 12px 20px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 320px; z-index: 10000; }
+    .jd-toast.show { opacity: 1; }
+    .jd-toast.error { background: var(--flag); }
+
+    /* ── MISC ── */
+    .jd-empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 12px; }
+    .jd-loading { padding: 32px 20px; text-align: center; color: var(--text-3); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+    @media (max-width: 640px) {
+      .jd-stats { grid-template-columns: repeat(2,1fr); }
+      .jd-main { padding: 16px; }
+      .jd-header { padding: 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="jd-login">
+    <div class="jd-login-box">
+      <div class="jd-login-brand">Jedda</div>
+      <div class="jd-login-title">Launch Dashboard</div>
+      <div class="jd-login-field">
+        <label class="jd-login-label">Password</label>
+        <input type="password" id="jd-pw" class="jd-login-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')jdLogin()">
+      </div>
+      <button class="jd-login-btn" onclick="jdLogin()">Enter</button>
+      <div class="jd-login-error" id="jd-login-error">Incorrect password.</div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="jd-app">
+    <div class="jd-header">
+      <div class="jd-header-brand">Jedda — Launch</div>
+      <div class="jd-header-meta">
+        <span id="jd-header-date"></span>
+        <button class="jd-header-logout" onclick="jdLogout()">Log out</button>
+      </div>
+    </div>
+
+    <div class="jd-main">
+
+      <!-- STATS -->
+      <div class="jd-stats">
+        <div class="jd-stat">
+          <div class="jd-stat-label">Total Pendaftar</div>
+          <div class="jd-stat-value" id="jd-stat-total">—</div>
+        </div>
+        <div class="jd-stat">
+          <div class="jd-stat-label">Bersih (Eligible)</div>
+          <div class="jd-stat-value ok" id="jd-stat-clean">—</div>
+        </div>
+        <div class="jd-stat">
+          <div class="jd-stat-label">Flagged Jastip</div>
+          <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
+        </div>
+        <div class="jd-stat">
+          <div class="jd-stat-label">Sudah Diundang</div>
+          <div class="jd-stat-value" id="jd-stat-invited">—</div>
+        </div>
+      </div>
+
+      <!-- BATCH TOKEN -->
+      <div class="jd-section">
+        <div class="jd-section-header">
+          <span class="jd-section-title">Kirim Batch Token</span>
+        </div>
+        <div class="jd-batch-form">
+          <div class="jd-form-group">
+            <label class="jd-form-label">Jumlah Token</label>
+            <input type="number" id="jd-batch-count" value="20" min="1" max="200" style="width:80px">
+          </div>
+          <div class="jd-form-group">
+            <label class="jd-form-label">Berlaku (Jam)</label>
+            <input type="number" id="jd-batch-hours" value="48" min="12" max="168" style="width:80px">
+          </div>
+          <div class="jd-form-group">
+            <label class="jd-form-label">&nbsp;</label>
+            <button class="jd-btn jd-btn-dark" onclick="generateBatch()">Generate Token</button>
+          </div>
+          <div class="jd-form-group">
+            <label class="jd-form-label">&nbsp;</label>
+            <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- WAITLIST -->
+      <div class="jd-section">
+        <div class="jd-section-header">
+          <span class="jd-section-title">Waitlist</span>
+          <div class="jd-controls">
+            <select id="jd-filter-status" onchange="loadWaitlist(1)">
+              <option value="">Semua Status</option>
+              <option value="pending">Pending</option>
+              <option value="invited">Diundang</option>
+              <option value="purchased">Sudah Beli</option>
+              <option value="expired">Expired</option>
+            </select>
+            <select id="jd-filter-flag" onchange="loadWaitlist(1)">
+              <option value="">Semua</option>
+              <option value="clean">Bersih</option>
+              <option value="flagged">Flagged</option>
+            </select>
+            <button class="jd-btn jd-btn-outline" onclick="loadWaitlist(1)">Refresh</button>
+          </div>
+        </div>
+        <div class="jd-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Email</th><th>No. HP</th><th>Produk</th>
+                <th>Warna / Ukuran</th><th>Daftar</th><th>Status</th><th>Flag</th><th>Alasan</th>
+              </tr>
+            </thead>
+            <tbody id="jd-waitlist-body">
+              <tr><td colspan="9"><div class="jd-loading">Memuat...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="jd-pagination">
+          <span class="jd-pagination-info" id="jd-pagination-info">—</span>
+          <div class="jd-pagination-controls">
+            <button class="jd-btn jd-btn-outline" id="jd-btn-prev" onclick="changePage(-1)">← Prev</button>
+            <button class="jd-btn jd-btn-outline" id="jd-btn-next" onclick="changePage(1)">Next →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOKENS -->
+      <div class="jd-section">
+        <div class="jd-section-header">
+          <span class="jd-section-title">Token Terkirim</span>
+          <div class="jd-controls">
+            <button class="jd-btn jd-btn-outline" onclick="loadTokens()">Refresh</button>
+          </div>
+        </div>
+        <div class="jd-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Token</th><th>Email</th><th>No. HP</th><th>Produk</th>
+                <th>Dibuat</th><th>Expires</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="jd-tokens-body">
+              <tr><td colspan="7"><div class="jd-loading">Memuat...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: KONFIRMASI BATCH -->
+  <div class="jd-modal-overlay" id="jd-modal-batch">
+    <div class="jd-modal">
+      <div class="jd-modal-title">Konfirmasi Generate Token</div>
+      <div class="jd-modal-body" id="jd-modal-batch-body">—</div>
+      <div class="jd-token-list" id="jd-modal-token-preview"></div>
+      <div class="jd-modal-actions">
+        <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-batch')">Batal</button>
+        <button class="jd-btn jd-btn-dark" onclick="confirmBatch()">Konfirmasi & Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: KIRIM EMAIL -->
+  <div class="jd-modal-overlay" id="jd-modal-email">
+    <div class="jd-modal">
+      <div class="jd-modal-title">Kirim Email Akses</div>
+      <div class="jd-modal-body">
+        <span id="jd-modal-email-count">0</span> token berhasil disimpan.<br>
+        Kirim email akses sekarang ke semua pendaftar dalam batch ini?
+      </div>
+      <div class="jd-modal-actions">
+        <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-email')">Nanti</button>
+        <button class="jd-btn jd-btn-dark" onclick="sendEmails()">Kirim Email Sekarang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="jd-toast" id="jd-toast"></div>
+
+  <script>
+    // ── CONFIG ──────────────────────────────────────────────
+    var DASHBOARD_PASSWORD = 'jedda2026launch';
+    var SB_URL   = 'https://misrdmmvukdpranxnqjq.supabase.co';
+    var SB_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pc3JkbW12dWtkcHJhbnhucWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDI0NDQsImV4cCI6MjA5NjA3ODQ0NH0.vdE181TfoBBwlTPK3lTusaSAnGNABX_DwPvL7A8KK_M';
+    var RESEND_KEY = 're_KNADXeMd_KLBGw4GUpbvFsmH8roCvwMbZ';
+    var PAGE_SIZE = 50;
+
+    // ── STATE ────────────────────────────────────────────────
+    var currentPage   = 1;
+    var totalRows     = 0;
+    var pendingBatch  = [];
+    var lastBatchSent = [];
+
+    // ── AUTH ─────────────────────────────────────────────────
+    function jdLogin() {
+      var pw = document.getElementById('jd-pw').value;
+      if (pw === DASHBOARD_PASSWORD) {
+        sessionStorage.setItem('jd_auth', '1');
+        document.getElementById('jd-login').style.display = 'none';
+        document.getElementById('jd-app').style.display = 'block';
+        document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        loadWaitlist(1);
+        loadTokens();
+      } else {
+        document.getElementById('jd-login-error').style.display = 'block';
+        document.getElementById('jd-pw').value = '';
+        document.getElementById('jd-pw').focus();
+      }
+    }
+
+    function jdLogout() {
+      sessionStorage.removeItem('jd_auth');
+      document.getElementById('jd-app').style.display = 'none';
+      document.getElementById('jd-login').style.display = 'flex';
+      document.getElementById('jd-pw').value = '';
+    }
+
+    // Auto-login if session exists
+    if (sessionStorage.getItem('jd_auth') === '1') {
+      document.getElementById('jd-login').style.display = 'none';
+      document.getElementById('jd-app').style.display = 'block';
+      document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      setTimeout(function() { loadWaitlist(1); loadTokens(); }, 0);
+    }
+
+    // ── UTILS ────────────────────────────────────────────────
+    function showToast(msg, isErr) {
+      var t = document.getElementById('jd-toast');
+      t.textContent = msg;
+      t.className = 'jd-toast show' + (isErr ? ' error' : '');
+      setTimeout(function() { t.className = 'jd-toast'; }, 3500);
+    }
+
+    function openModal(id)  { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      var d = new Date(iso);
+      return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })
+        + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+    }
+
+    function fmtPhone(p) {
+      if (!p) return '—';
+      return p.startsWith('62') ? '0' + p.slice(2) : p;
+    }
+
+    function genToken() {
+      var c = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789', t = '';
+      for (var i = 0; i < 12; i++) t += c[Math.floor(Math.random() * c.length)];
+      return t;
+    }
+
+    // ── SUPABASE ─────────────────────────────────────────────
+    async function sbQuery(path, opts) {
+      opts = opts || {};
+      var headers = Object.assign({
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'count=exact'
+      }, opts.headers || {});
+      var res  = await fetch(SB_URL + '/rest/v1/' + path, Object.assign({}, opts, { headers: headers }));
+      var raw  = res.headers.get('content-type') && res.headers.get('content-type').includes('json') ? await res.json() : [];
+      var data = Array.isArray(raw) ? raw : [];
+      var cr   = res.headers.get('content-range');
+      return { data: data, count: cr ? parseInt(cr.split('/')[1]) : null, status: res.status };
+    }
+
+    // ── STATS ────────────────────────────────────────────────
+    async function loadStats() {
+      var r = await Promise.all([
+        sbQuery('launch_waitlist?select=id'),
+        sbQuery('launch_waitlist?select=id&is_flagged=eq.false'),
+        sbQuery('launch_waitlist?select=id&is_flagged=eq.true'),
+        sbQuery('launch_waitlist?select=id&status=eq.invited')
+      ]);
+      document.getElementById('jd-stat-total').textContent   = r[0].count != null ? r[0].count : '—';
+      document.getElementById('jd-stat-clean').textContent   = r[1].count != null ? r[1].count : '—';
+      document.getElementById('jd-stat-flagged').textContent = r[2].count != null ? r[2].count : '—';
+      document.getElementById('jd-stat-invited').textContent = r[3].count != null ? r[3].count : '—';
+    }
+
+    // ── WAITLIST ─────────────────────────────────────────────
+    async function loadWaitlist(page) {
+      page = page || 1;
+      currentPage = page;
+      var tbody = document.getElementById('jd-waitlist-body');
+      tbody.innerHTML = '<tr><td colspan="9"><div class="jd-loading">Memuat...</div></td></tr>';
+
+      var sf = document.getElementById('jd-filter-status').value;
+      var ff = document.getElementById('jd-filter-flag').value;
+      var q  = 'launch_waitlist?select=*&order=registered_at.asc';
+      if (sf) q += '&status=eq.' + sf;
+      if (ff === 'clean')   q += '&is_flagged=eq.false';
+      if (ff === 'flagged') q += '&is_flagged=eq.true';
+
+      var from = (page - 1) * PAGE_SIZE;
+      var to   = from + PAGE_SIZE - 1;
+      var result = await sbQuery(q, {
+        headers: { 'Prefer': 'count=exact', 'Range': from + '-' + to, 'Range-Unit': 'items' }
+      });
+
+      totalRows = result.count || 0;
+      var totalPages = Math.ceil(totalRows / PAGE_SIZE);
+
+      document.getElementById('jd-pagination-info').textContent =
+        (from + 1) + '–' + Math.min(to + 1, totalRows) + ' dari ' + totalRows + ' pendaftar';
+      document.getElementById('jd-btn-prev').disabled = page <= 1;
+      document.getElementById('jd-btn-next').disabled = page >= totalPages;
+
+      if (!result.data.length) {
+        tbody.innerHTML = '<tr><td colspan="9"><div class="jd-empty">Tidak ada data</div></td></tr>';
+        return;
+      }
+
+      var pMap = { rhea: 'Rhea', phi: 'Phi' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+
+      tbody.innerHTML = result.data.map(function(row, i) {
+        return '<tr>' +
+          '<td style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
+          '<td>' + (row.email || '—') + '</td>' +
+          '<td>' + fmtPhone(row.phone) + '</td>' +
+          '<td style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
+          '<td style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
+          '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
+          '<td><span class="badge badge-' + row.status + '">' + row.status + '</span></td>' +
+          '<td>' + (row.is_flagged
+            ? '<span class="badge badge-flag">Flagged</span>'
+            : '<span class="badge badge-ok">Bersih</span>') + '</td>' +
+          '<td style="color:var(--text-3);font-size:11px">' + (row.flag_reason || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+
+      loadStats();
+    }
+
+    function changePage(dir) { loadWaitlist(currentPage + dir); }
+
+    // ── TOKENS ───────────────────────────────────────────────
+    async function loadTokens() {
+      var tbody = document.getElementById('jd-tokens-body');
+      tbody.innerHTML = '<tr><td colspan="7"><div class="jd-loading">Memuat...</div></td></tr>';
+      var result = await sbQuery('launch_tokens?select=*&order=created_at.desc&limit=200');
+
+      if (!result.data.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="jd-empty">Belum ada token</div></td></tr>';
+        return;
+      }
+
+      var pMap = { rhea: 'Rhea', phi: 'Phi' };
+      tbody.innerHTML = result.data.map(function(row) {
+        var expired = new Date(row.expires_at) < new Date();
+        var status  = row.is_used ? 'purchased' : expired ? 'expired' : 'invited';
+        var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : 'Aktif';
+        return '<tr>' +
+          '<td><code style="font-size:11px;letter-spacing:.04em">' + row.token + '</code></td>' +
+          '<td>' + (row.email || '—') + '</td>' +
+          '<td>' + fmtPhone(row.phone) + '</td>' +
+          '<td style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
+          '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
+          '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.expires_at) + '</td>' +
+          '<td><span class="badge badge-' + status + '">' + label + '</span></td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    // ── GENERATE BATCH ───────────────────────────────────────
+    async function generateBatch() {
+      var count = parseInt(document.getElementById('jd-batch-count').value);
+      var hours = parseInt(document.getElementById('jd-batch-hours').value);
+      if (!count || count < 1) return showToast('Jumlah tidak valid', true);
+
+      var result = await sbQuery(
+        'launch_waitlist?select=*&is_flagged=eq.false&status=eq.pending&order=registered_at.asc&limit=' + count
+      );
+
+      if (!result.data.length) return showToast('Tidak ada pendaftar eligible tersisa', true);
+
+      var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+
+      pendingBatch = result.data.map(function(row) {
+        return {
+          token:        genToken(),
+          waitlist_id:  row.id,
+          email:        row.email,
+          phone:        row.phone,
+          product:      row.product,
+          color:        row.color,
+          size:         row.size,
+          variation_id: row.variation_id || null,
+          expires_at:   expiresAt,
+          is_used:      false
+        };
+      });
+
+      document.getElementById('jd-modal-batch-body').innerHTML =
+        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' +
+        pendingBatch.length + ' pendaftar pertama yang eligible.<br>' +
+        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').';
+
+      document.getElementById('jd-modal-token-preview').textContent =
+        pendingBatch.map(function(t) { return t.email + ' → ' + t.token; }).join('\n');
+
+      openModal('jd-modal-batch');
+    }
+
+    async function confirmBatch() {
+      if (!pendingBatch.length) return;
+      closeModal('jd-modal-batch');
+      showToast('Menyimpan token...');
+
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_tokens', {
+          method: 'POST',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(pendingBatch)
+        });
+        if (!res.ok) throw new Error('Insert failed: ' + res.status);
+
+        var ids = pendingBatch.map(function(t) { return t.waitlist_id; });
+        await fetch(SB_URL + '/rest/v1/launch_waitlist?id=in.(' + ids.join(',') + ')', {
+          method: 'PATCH',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ status: 'invited' })
+        });
+
+        lastBatchSent = pendingBatch.slice();
+        showToast(pendingBatch.length + ' token berhasil dibuat');
+        pendingBatch = [];
+        loadWaitlist(currentPage);
+        loadTokens();
+
+        document.getElementById('jd-modal-email-count').textContent = lastBatchSent.length;
+        openModal('jd-modal-email');
+
+      } catch(e) {
+        showToast('Gagal simpan token. Coba lagi.', true);
+        console.error(e);
+      }
+    }
+
+    // ── SEND EMAILS ──────────────────────────────────────────
+    async function sendEmails() {
+      if (!lastBatchSent.length) return;
+      closeModal('jd-modal-email');
+      showToast('Mengirim email...');
+
+      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+      var sent = 0, failed = 0;
+
+      for (var i = 0; i < lastBatchSent.length; i++) {
+        var t = lastBatchSent[i];
+        var firstName    = (t.email || '').split('@')[0].split('.')[0];
+        firstName        = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+        var productLabel = pMap[t.product] || t.product || 'Jacket';
+        var colorLabel   = cMap[t.color] || t.color || '';
+        var sizeLabel    = sMap[t.size] || t.size || '';
+        var accessLink   = 'https://jeddawear.com/jacket-access/?token=' + t.token;
+        var expiresDate  = new Date(t.expires_at);
+        var expiresStr   = expiresDate.toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })
+          + ', ' + expiresDate.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' WIB';
+
+        var html = '<div style="max-width:520px;margin:0 auto;font-family:Georgia,serif;color:#1A1917;padding:48px 32px;">'
+          + '<p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#A09C97;margin:0 0 40px">Jedda</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 8px">Dear ' + firstName + ',</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 32px;color:#6B6760">Thank you for your patience.</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 32px">Your reserved access for the <strong>' + productLabel + '</strong> in ' + colorLabel + ', ' + sizeLabel + ' is now available. Please use the link below to complete your order.</p>'
+          + '<div style="margin:0 0 32px"><a href="' + accessLink + '" style="display:inline-block;background:#1A1917;color:#F7F6F4;text-decoration:none;font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:14px 28px;">Complete Your Order</a></div>'
+          + '<p style="font-size:13px;line-height:1.7;color:#6B6760;margin:0 0 16px">This link is personal and valid until <strong>' + expiresStr + '</strong>. Once opened, you have 15 minutes to complete your purchase.</p>'
+          + '<p style="font-size:13px;line-height:1.7;color:#6B6760;margin:0 0 40px">Please do not share this link. It is intended for your use only. Any order placed through a shared link will be subject to cancellation without prior notice.</p>'
+          + '<p style="font-size:13px;color:#A09C97;margin:0">Warm regards,<br>Jedda</p>'
+          + '</div>';
+
+        try {
+          var emailRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: 'Jedda <shop@jeddawear.com>', to: [t.email], subject: 'Your access is now open.', html: html })
+          });
+          emailRes.ok ? sent++ : failed++;
+        } catch(e) { failed++; }
+
+        if (i < lastBatchSent.length - 1) await new Promise(function(r) { setTimeout(r, 200); });
+      }
+
+      lastBatchSent = [];
+      showToast(failed === 0 ? sent + ' email berhasil terkirim' : sent + ' terkirim, ' + failed + ' gagal', failed > 0);
+    }
+
+    // ── EXPORT CSV ───────────────────────────────────────────
+    async function exportCSV() {
+      var result = await sbQuery('launch_tokens?select=*&is_used=eq.false&order=created_at.desc&limit=500');
+      if (!result.data.length) return showToast('Tidak ada token aktif untuk diexport', true);
+
+      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+
+      var rows = result.data.map(function(t) {
+        return [
+          t.email, fmtPhone(t.phone), t.token,
+          'https://jeddawear.com/jacket-access/?token=' + t.token,
+          pMap[t.product] || t.product || '',
+          cMap[t.color] || t.color || '',
+          sMap[t.size] || t.size || '',
+          fmtDate(t.expires_at)
+        ].join(',');
+      });
+
+      var csv  = 'email,phone,token,access_link,product,color,size,expires_at\n' + rows.join('\n');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = 'jedda-tokens-' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click(); URL.revokeObjectURL(url);
+      showToast('CSV berhasil didownload');
+    }
+  </script>
+
+</body>
+</html>
