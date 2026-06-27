@@ -312,31 +312,6 @@
         </div>
       </div>
 
-      <!-- BATCH TOKEN -->
-      <div class="jd-section">
-        <div class="jd-section-header">
-          <span class="jd-section-title">Kirim Batch Token</span>
-        </div>
-        <div class="jd-batch-form">
-          <div class="jd-form-group">
-            <label class="jd-form-label">Jumlah Token</label>
-            <input type="number" id="jd-batch-count" value="20" min="1" max="200" style="width:80px">
-          </div>
-          <div class="jd-form-group">
-            <label class="jd-form-label">Berlaku (Jam)</label>
-            <input type="number" id="jd-batch-hours" value="48" min="12" max="168" style="width:80px">
-          </div>
-          <div class="jd-form-group">
-            <label class="jd-form-label">&nbsp;</label>
-            <button class="jd-btn jd-btn-dark" onclick="generateBatch()">Generate Token</button>
-          </div>
-          <div class="jd-form-group">
-            <label class="jd-form-label">&nbsp;</label>
-            <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
-          </div>
-        </div>
-      </div>
-
       <!-- WAITLIST -->
       <div class="jd-section">
         <div class="jd-section-header">
@@ -354,19 +329,42 @@
               <option value="clean">Bersih</option>
               <option value="flagged">Flagged</option>
             </select>
+            <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
             <button class="jd-btn jd-btn-outline" onclick="loadWaitlist(1)">Refresh</button>
           </div>
         </div>
+
+        <!-- ACTION BAR (muncul saat ada yang dicentang) -->
+        <div id="jd-action-bar" style="display:none;padding:12px 20px;background:var(--text);color:#F7F6F4;display:none;align-items:center;justify-content:space-between;gap:12px;">
+          <div style="display:flex;align-items:center;gap:16px;">
+            <span style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;" id="jd-action-count">0 dipilih</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.6">Berlaku</span>
+              <select id="jd-action-hours" style="font-size:11px;padding:4px 8px;background:#2A2927;color:#F7F6F4;border:1px solid #3A3937;border-radius:0;">
+                <option value="24">24 jam</option>
+                <option value="48" selected>48 jam</option>
+                <option value="72">72 jam</option>
+                <option value="168">7 hari</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="jd-btn" style="background:transparent;color:#F7F6F4;border:1px solid rgba(255,255,255,0.3);font-size:11px;" onclick="clearSelection()">Batal</button>
+            <button class="jd-btn" style="background:#F7F6F4;color:var(--text);font-size:11px;" onclick="generateSelected()">Generate & Kirim Token</button>
+          </div>
+        </div>
+
         <div class="jd-table-wrap">
           <table>
             <thead>
               <tr>
+                <th style="width:40px"><input type="checkbox" id="jd-check-all" onchange="toggleSelectAll(this)" style="cursor:pointer"></th>
                 <th>#</th><th>Email</th><th>No. HP</th><th>Produk</th>
-                <th>Warna / Ukuran</th><th>Daftar</th><th>Status</th><th>Flag</th><th>Alasan</th>
+                <th>Warna / Ukuran</th><th>Daftar</th><th>Status</th><th>Flag</th>
               </tr>
             </thead>
             <tbody id="jd-waitlist-body">
-              <tr><td colspan="9"><div class="jd-loading">Memuat...</div></td></tr>
+              <tr><td colspan="10"><div class="jd-loading">Memuat...</div></td></tr>
             </tbody>
           </table>
         </div>
@@ -541,12 +539,61 @@
       document.getElementById('jd-stat-invited').textContent = r[3].count != null ? r[3].count : '—';
     }
 
+    // ── SELECTION ────────────────────────────────────────────
+    var selectedRows = {}; // { id: rowData }
+
+    function updateActionBar() {
+      var keys = Object.keys(selectedRows);
+      var bar  = document.getElementById('jd-action-bar');
+      if (keys.length > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('jd-action-count').textContent = keys.length + ' dipilih';
+      } else {
+        bar.style.display = 'none';
+      }
+    }
+
+    function toggleRow(id, rowData, checked) {
+      if (checked) { selectedRows[id] = rowData; }
+      else { delete selectedRows[id]; }
+      updateActionBar();
+      // Update select-all state
+      var checkboxes = document.querySelectorAll('.jd-row-check');
+      var allChecked = Array.from(checkboxes).every(function(c) { return c.checked; });
+      document.getElementById('jd-check-all').checked = allChecked && checkboxes.length > 0;
+    }
+
+    function toggleSelectAll(el) {
+      var checkboxes = document.querySelectorAll('.jd-row-check');
+      checkboxes.forEach(function(c) {
+        // Only select eligible (pending, not flagged)
+        if (!el.checked || c.dataset.eligible === '1') {
+          c.checked = el.checked;
+          var id = c.dataset.id;
+          if (el.checked && c.dataset.eligible === '1') {
+            selectedRows[id] = JSON.parse(c.dataset.row);
+          } else {
+            delete selectedRows[id];
+          }
+        }
+      });
+      updateActionBar();
+    }
+
+    function clearSelection() {
+      selectedRows = {};
+      document.querySelectorAll('.jd-row-check').forEach(function(c) { c.checked = false; });
+      document.getElementById('jd-check-all').checked = false;
+      updateActionBar();
+    }
+
     // ── WAITLIST ─────────────────────────────────────────────
     async function loadWaitlist(page) {
       page = page || 1;
       currentPage = page;
+      clearSelection();
       var tbody = document.getElementById('jd-waitlist-body');
-      tbody.innerHTML = '<tr><td colspan="9"><div class="jd-loading">Memuat...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="jd-loading">Memuat...</div></td></tr>';
 
       var sf = document.getElementById('jd-filter-status').value;
       var ff = document.getElementById('jd-filter-flag').value;
@@ -570,7 +617,7 @@
       document.getElementById('jd-btn-next').disabled = page >= totalPages;
 
       if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="jd-empty">Tidak ada data</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="jd-empty">Tidak ada data</div></td></tr>';
         return;
       }
 
@@ -579,7 +626,10 @@
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
       tbody.innerHTML = result.data.map(function(row, i) {
-        return '<tr>' +
+        var eligible = (!row.is_flagged && row.status === 'pending') ? '1' : '0';
+        var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
+        return '<tr style="' + (eligible === '0' ? 'opacity:0.6' : '') + '">' +
+          '<td><input type="checkbox" class="jd-row-check" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
           '<td>' + (row.email || '—') + '</td>' +
           '<td>' + fmtPhone(row.phone) + '</td>' +
@@ -590,7 +640,6 @@
           '<td>' + (row.is_flagged
             ? '<span class="badge badge-flag">Flagged</span>'
             : '<span class="badge badge-ok">Bersih</span>') + '</td>' +
-          '<td style="color:var(--text-3);font-size:11px">' + (row.flag_reason || '—') + '</td>' +
           '</tr>';
       }).join('');
 
@@ -599,7 +648,38 @@
 
     function changePage(dir) { loadWaitlist(currentPage + dir); }
 
-    // ── TOKENS ───────────────────────────────────────────────
+    // ── GENERATE SELECTED ────────────────────────────────────
+    async function generateSelected() {
+      var rows  = Object.values(selectedRows);
+      var hours = parseInt(document.getElementById('jd-action-hours').value);
+      if (!rows.length) return;
+
+      var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+
+      pendingBatch = rows.map(function(row) {
+        return {
+          token:        genToken(),
+          waitlist_id:  row.id,
+          email:        row.email,
+          phone:        row.phone,
+          product:      row.product,
+          color:        row.color,
+          size:         row.size,
+          variation_id: row.variation_id || null,
+          expires_at:   expiresAt,
+          is_used:      false
+        };
+      });
+
+      document.getElementById('jd-modal-batch-body').innerHTML =
+        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' + pendingBatch.length + ' pendaftar yang dipilih.<br>' +
+        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').';
+
+      document.getElementById('jd-modal-token-preview').textContent =
+        pendingBatch.map(function(t) { return t.email + ' → ' + t.token; }).join('\n');
+
+      openModal('jd-modal-batch');
+    }
     async function loadTokens() {
       var tbody = document.getElementById('jd-tokens-body');
       tbody.innerHTML = '<tr><td colspan="7"><div class="jd-loading">Memuat...</div></td></tr>';
@@ -627,46 +707,6 @@
       }).join('');
     }
 
-    // ── GENERATE BATCH ───────────────────────────────────────
-    async function generateBatch() {
-      var count = parseInt(document.getElementById('jd-batch-count').value);
-      var hours = parseInt(document.getElementById('jd-batch-hours').value);
-      if (!count || count < 1) return showToast('Jumlah tidak valid', true);
-
-      var result = await sbQuery(
-        'launch_waitlist?select=*&is_flagged=eq.false&status=eq.pending&order=registered_at.asc&limit=' + count
-      );
-
-      if (!result.data.length) return showToast('Tidak ada pendaftar eligible tersisa', true);
-
-      var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
-
-      pendingBatch = result.data.map(function(row) {
-        return {
-          token:        genToken(),
-          waitlist_id:  row.id,
-          email:        row.email,
-          phone:        row.phone,
-          product:      row.product,
-          color:        row.color,
-          size:         row.size,
-          variation_id: row.variation_id || null,
-          expires_at:   expiresAt,
-          is_used:      false
-        };
-      });
-
-      document.getElementById('jd-modal-batch-body').innerHTML =
-        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' +
-        pendingBatch.length + ' pendaftar pertama yang eligible.<br>' +
-        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').';
-
-      document.getElementById('jd-modal-token-preview').textContent =
-        pendingBatch.map(function(t) { return t.email + ' → ' + t.token; }).join('\n');
-
-      openModal('jd-modal-batch');
-    }
-
     async function confirmBatch() {
       if (!pendingBatch.length) return;
       closeModal('jd-modal-batch');
@@ -690,6 +730,7 @@
         lastBatchSent = pendingBatch.slice();
         showToast(pendingBatch.length + ' token berhasil dibuat');
         pendingBatch = [];
+        clearSelection();
         loadWaitlist(currentPage);
         loadTokens();
 
