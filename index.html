@@ -257,6 +257,86 @@
     .jd-empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 12px; }
     .jd-loading { padding: 32px 20px; text-align: center; color: var(--text-3); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
 
+    /* ── ALOKASI ── */
+    .jd-alloc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border-top: 1px solid var(--border);
+    }
+    .jd-alloc-card {
+      background: var(--surface);
+      padding: 16px 20px;
+    }
+    .jd-alloc-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 10px;
+    }
+    .jd-alloc-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .jd-alloc-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .jd-alloc-bar-track {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .jd-alloc-bar-fill {
+      height: 100%;
+      background: var(--text);
+      transition: width .3s;
+    }
+    .jd-alloc-bar-fill.full { background: var(--flag); }
+    .jd-alloc-count {
+      font-size: 11px;
+      color: var(--text-2);
+      white-space: nowrap;
+      min-width: 48px;
+      text-align: right;
+    }
+    .jd-alloc-bar-label {
+      font-size: 10px;
+      color: var(--text-3);
+      min-width: 60px;
+      white-space: nowrap;
+    }
+    .jd-alloc-form {
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr auto auto;
+      gap: 8px;
+      align-items: flex-end;
+      border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 900px) {
+      .jd-alloc-form { grid-template-columns: 1fr 1fr; }
+    }
+    .jd-alloc-input {
+      font-family: 'Jost', sans-serif;
+      font-size: 12px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 10px;
+      outline: none;
+      width: 100%;
+      border-radius: 0;
+    }
+    .jd-alloc-input:focus { border-color: var(--text); }
+    .jd-alloc-input::placeholder { color: var(--text-3); }
+
     @media (max-width: 640px) {
       .jd-stats { grid-template-columns: repeat(2,1fr); }
       .jd-main { padding: 16px; }
@@ -309,6 +389,59 @@
         <div class="jd-stat">
           <div class="jd-stat-label">Sudah Diundang</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
+        </div>
+      </div>
+
+      <!-- ALOKASI STOK -->
+      <div class="jd-section" id="jd-alloc-section">
+        <div class="jd-section-header">
+          <span class="jd-section-title">Alokasi Stok</span>
+          <div class="jd-controls">
+            <button class="jd-btn jd-btn-outline" onclick="toggleAllocForm()">+ Tambah Alokasi</button>
+            <button class="jd-btn jd-btn-outline" onclick="loadAllocations()">Refresh</button>
+          </div>
+        </div>
+
+        <!-- FORM TAMBAH ALOKASI (hidden by default) -->
+        <div class="jd-alloc-form" id="jd-alloc-form" style="display:none;">
+          <div class="jd-form-group">
+            <div class="jd-form-label">Batch Label</div>
+            <input type="text" id="jd-alloc-batch" class="jd-alloc-input" placeholder="Batch 1">
+          </div>
+          <div class="jd-form-group">
+            <div class="jd-form-label">Produk</div>
+            <select id="jd-alloc-product" class="jd-alloc-input">
+              <option value="rhea">Rhea Flare Jacket</option>
+              <option value="phi">Phi Jacket</option>
+            </select>
+          </div>
+          <div class="jd-form-group">
+            <div class="jd-form-label">Warna</div>
+            <select id="jd-alloc-color" class="jd-alloc-input">
+              <option value="breen">Breen</option>
+              <option value="auburn">Auburn</option>
+            </select>
+          </div>
+          <div class="jd-form-group">
+            <div class="jd-form-label">Ukuran</div>
+            <select id="jd-alloc-size" class="jd-alloc-input">
+              <option value="sm">S/M</option>
+              <option value="lxl">L/XL</option>
+            </select>
+          </div>
+          <div class="jd-form-group">
+            <div class="jd-form-label">Qty</div>
+            <input type="number" id="jd-alloc-qty" class="jd-alloc-input" placeholder="0" min="1" max="99" style="width:70px">
+          </div>
+          <div class="jd-form-group">
+            <div class="jd-form-label">&nbsp;</div>
+            <button class="jd-btn jd-btn-dark" onclick="saveAllocation()">Simpan</button>
+          </div>
+        </div>
+
+        <!-- KARTU ALOKASI -->
+        <div id="jd-alloc-body">
+          <div class="jd-loading">Memuat...</div>
         </div>
       </div>
 
@@ -439,7 +572,7 @@
     var DASHBOARD_PASSWORD = 'jedda2026launch';
     var SB_URL   = 'https://misrdmmvukdpranxnqjq.supabase.co';
     var SB_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pc3JkbW12dWtkcHJhbnhucWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDI0NDQsImV4cCI6MjA5NjA3ODQ0NH0.vdE181TfoBBwlTPK3lTusaSAnGNABX_DwPvL7A8KK_M';
-    var RESEND_KEY = 're_KNADXeMd_KLBGw4GUpbvFsmH8roCvwMbZ';
+    // RESEND_KEY tidak disimpan di browser lagi — email dikirim via Supabase Edge Function
     var PAGE_SIZE = 50;
 
     // ── STATE ────────────────────────────────────────────────
@@ -458,6 +591,7 @@
         document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         loadWaitlist(1);
         loadTokens();
+        loadAllocations();
       } else {
         document.getElementById('jd-login-error').style.display = 'block';
         document.getElementById('jd-pw').value = '';
@@ -477,7 +611,7 @@
       document.getElementById('jd-login').style.display = 'none';
       document.getElementById('jd-app').style.display = 'block';
       document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      setTimeout(function() { loadWaitlist(1); loadTokens(); }, 0);
+      setTimeout(function() { loadWaitlist(1); loadTokens(); loadAllocations(); }, 0);
     }
 
     // ── UTILS ────────────────────────────────────────────────
@@ -778,12 +912,22 @@
           + '</div>';
 
         try {
-          var emailRes = await fetch('https://api.resend.com/emails', {
+          // Routing via Supabase Edge Function untuk avoid CORS block
+          // (Resend API tidak allow direct browser calls)
+          var emailRes = await fetch(SB_URL + '/functions/v1/send-launch-email', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'Jedda <shop@jeddawear.com>', to: [t.email], subject: 'Your access is now open.', html: html })
+            headers: {
+              'Authorization': 'Bearer ' + SB_KEY,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              to:      t.email,
+              subject: 'Your access is now open.',
+              html:    html
+            })
           });
-          emailRes.ok ? sent++ : failed++;
+          var emailData = await emailRes.json();
+          emailRes.ok && emailData.ok ? sent++ : failed++;
         } catch(e) { failed++; }
 
         if (i < lastBatchSent.length - 1) await new Promise(function(r) { setTimeout(r, 200); });
@@ -791,6 +935,127 @@
 
       lastBatchSent = [];
       showToast(failed === 0 ? sent + ' email berhasil terkirim' : sent + ' terkirim, ' + failed + ' gagal', failed > 0);
+    }
+
+    // ── ALOKASI ──────────────────────────────────────────────
+    var allocFormOpen = false;
+
+    function toggleAllocForm() {
+      allocFormOpen = !allocFormOpen;
+      document.getElementById('jd-alloc-form').style.display = allocFormOpen ? 'grid' : 'none';
+      if (allocFormOpen) document.getElementById('jd-alloc-batch').focus();
+    }
+
+    async function loadAllocations() {
+      var container = document.getElementById('jd-alloc-body');
+      container.innerHTML = '<div class="jd-loading">Memuat...</div>';
+
+      // Pakai view summary kalau sudah dibuat, fallback ke table biasa
+      var result = await sbQuery('launch_allocation_summary?select=*&order=created_at.desc');
+
+      if (!result.data || !result.data.length) {
+        container.innerHTML = '<div class="jd-empty">Belum ada alokasi. Tambahkan alokasi stok untuk batch ini.</div>';
+        return;
+      }
+
+      var pMap = { rhea: 'Rhea', phi: 'Phi' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+
+      // Group by batch_label
+      var batches = {};
+      result.data.forEach(function(row) {
+        var key = row.batch_label || 'Tanpa Batch';
+        if (!batches[key]) batches[key] = [];
+        batches[key].push(row);
+      });
+
+      var html = '';
+      Object.keys(batches).forEach(function(batchName) {
+        var rows = batches[batchName];
+        html += '<div style="padding:14px 20px 4px;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);border-top:1px solid var(--border)">' + batchName + '</div>';
+        html += '<div class="jd-alloc-grid">';
+        rows.forEach(function(row) {
+          var invited  = row.invited_active || 0;
+          var bought   = row.purchased || 0;
+          var total    = row.allocated || 0;
+          var used     = invited + bought;
+          var pct      = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+          var isFull   = pct >= 100;
+          var remaining = Math.max(0, row.remaining != null ? row.remaining : total - used);
+
+          html += '<div class="jd-alloc-card">';
+          html += '<div class="jd-alloc-label">' + (pMap[row.product] || row.product) + ' — ' + (cMap[row.color] || row.color) + ' ' + (sMap[row.size] || row.size) + '</div>';
+          html += '<div class="jd-alloc-bars">';
+          // Bar: used vs total
+          html += '<div class="jd-alloc-bar-row">';
+          html += '<div class="jd-alloc-bar-label" style="color:var(--text-2);font-size:11px">Terpakai</div>';
+          html += '<div class="jd-alloc-bar-track"><div class="jd-alloc-bar-fill' + (isFull ? ' full' : '') + '" style="width:' + pct + '%"></div></div>';
+          html += '<div class="jd-alloc-count">' + used + '/' + total + '</div>';
+          html += '</div>';
+          // Sub-info
+          html += '<div style="display:flex;gap:12px;margin-top:4px">';
+          html += '<span style="font-size:10px;color:var(--text-3)">Invited: <strong style="color:var(--text-2)">' + invited + '</strong></span>';
+          html += '<span style="font-size:10px;color:var(--text-3)">Beli: <strong style="color:var(--ok)">' + bought + '</strong></span>';
+          html += '<span style="font-size:10px;color:var(--text-3)">Sisa: <strong style="color:' + (isFull ? 'var(--flag)' : 'var(--text)') + '">' + remaining + '</strong></span>';
+          html += '</div>';
+          html += '</div>';
+          // Delete button
+          html += '<div style="margin-top:10px"><button onclick="deleteAllocation(\'' + row.id + '\')" style="font-family:Jost,sans-serif;font-size:9px;letter-spacing:.08em;text-transform:uppercase;background:none;border:none;color:var(--text-3);cursor:pointer;padding:0;transition:color .15s" onmouseover="this.style.color=\'var(--flag)\'" onmouseout="this.style.color=\'var(--text-3)\'">Hapus</button></div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    async function saveAllocation() {
+      var batch   = document.getElementById('jd-alloc-batch').value.trim();
+      var product = document.getElementById('jd-alloc-product').value;
+      var color   = document.getElementById('jd-alloc-color').value;
+      var size    = document.getElementById('jd-alloc-size').value;
+      var qty     = parseInt(document.getElementById('jd-alloc-qty').value);
+
+      if (!batch) return showToast('Isi nama batch dulu', true);
+      if (!qty || qty < 1) return showToast('Qty harus minimal 1', true);
+
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_allocations', {
+          method: 'POST',
+          headers: {
+            'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+            'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ batch_label: batch, product: product, color: color, size: size, allocated: qty })
+        });
+
+        if (!res.ok) throw new Error('Insert failed ' + res.status);
+
+        // Reset form
+        document.getElementById('jd-alloc-batch').value = '';
+        document.getElementById('jd-alloc-qty').value = '';
+        showToast('Alokasi disimpan');
+        loadAllocations();
+      } catch(e) {
+        showToast('Gagal simpan alokasi', true);
+        console.error(e);
+      }
+    }
+
+    async function deleteAllocation(id) {
+      if (!confirm('Hapus alokasi ini?')) return;
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_allocations?id=eq.' + id, {
+          method: 'DELETE',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+        });
+        if (!res.ok) throw new Error('Delete failed');
+        showToast('Alokasi dihapus');
+        loadAllocations();
+      } catch(e) {
+        showToast('Gagal hapus', true);
+      }
     }
 
     // ── EXPORT CSV ───────────────────────────────────────────
