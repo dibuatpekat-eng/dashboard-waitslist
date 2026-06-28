@@ -233,6 +233,33 @@
     .badge-invited { background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; }
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
+    /* ── TOKEN ACTION DROPDOWN ── */
+    .jd-token-action { position: relative; display: inline-block; }
+    .jd-token-action-btn {
+      font-family: 'Jost', sans-serif; font-size: 11px; letter-spacing: 0.08em;
+      background: none; border: 1px solid var(--border-strong); color: var(--text-2);
+      padding: 4px 10px; cursor: pointer; white-space: nowrap;
+    }
+    .jd-token-action-btn:hover { border-color: var(--text); color: var(--text); }
+    .jd-token-dropdown {
+      display: none; position: absolute; right: 0; top: calc(100% + 4px);
+      background: var(--surface); border: 1px solid var(--border-strong);
+      min-width: 180px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    }
+    .jd-token-dropdown.open { display: block; }
+    .jd-token-dropdown button {
+      display: block; width: 100%; text-align: left;
+      font-family: 'Jost', sans-serif; font-size: 11px; letter-spacing: 0.06em;
+      background: none; border: none; border-bottom: 1px solid var(--border);
+      color: var(--text); padding: 10px 14px; cursor: pointer;
+    }
+    .jd-token-dropdown button:last-child { border-bottom: none; }
+    .jd-token-dropdown button:hover { background: var(--bg); }
+    .jd-token-dropdown .jd-dd-label {
+      display: block; font-size: 10px; color: var(--text-3);
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 8px 14px 4px; border-bottom: 1px solid var(--border);
+    }
 
     /* ── PAGINATION ── */
     .jd-pagination { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -837,67 +864,144 @@
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.expires_at) + '</td>' +
           '<td><span class="badge badge-' + status + '">' + label + '</span></td>' +
-          '<td><button onclick="resetToken(\'' + row.waitlist_id + '\', \'' + row.email + '\')" style="font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;background:none;border:1px solid var(--border-strong);color:var(--text-2);padding:4px 10px;cursor:pointer;">Reset</button></td>' +
+          '<td>' +
+          '<div class="jd-token-action">' +
+          '<button class="jd-token-action-btn" onclick="toggleTokenMenu(this)">Kelola ▾</button>' +
+          '<div class="jd-token-dropdown">' +
+          '<span class="jd-dd-label">' + (row.email || '—') + '</span>' +
+          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
+          '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>' +
+          '</div>' +
+          '</div>' +
+          '</td>' +
           '</tr>';
       }).join('');
     }
 
-    // ── RESET TOKEN ──────────────────────────────────────────
-    async function resetToken(waitlistId, email) {
-      if (!confirm('Reset token untuk ' + email + '?\n\nToken lama akan diganti baru, status balik ke invited.')) return;
+    // ── TOKEN ACTION DROPDOWN ────────────────────────────────
+    function toggleTokenMenu(btn) {
+      // Tutup semua dropdown lain dulu
+      document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) {
+        if (d !== btn.nextElementSibling) d.classList.remove('open');
+      });
+      btn.nextElementSibling.classList.toggle('open');
+    }
 
-      var newToken = genToken();
-      var hours    = parseInt(document.getElementById('jd-action-hours').value) || 48;
+    // Tutup dropdown kalau klik di luar
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.jd-token-action')) {
+        document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+      }
+    });
+
+    async function tokenAction(type, waitlistId, currentToken, email, product, color, size) {
+      document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+
+      var hours     = parseInt(document.getElementById('jd-action-hours').value) || 48;
       var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+      var tokenToUse;
+
+      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+
+      var label = type === 'new' ? 'generate token baru' : 'reset token & kirim ulang';
+      if (!confirm('Konfirmasi ' + label + ' untuk ' + email + '?')) return;
 
       try {
-        showToast('Mereset token...');
+        showToast(type === 'new' ? 'Membuat token baru...' : 'Mereset token...');
 
-        // Delete token lama
-        await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=eq.' + waitlistId, {
-          method: 'DELETE',
-          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-        });
+        if (type === 'new') {
+          // ── GENERATE TOKEN BARU ──
+          tokenToUse = genToken();
 
-        // Fetch waitlist data untuk isi field token baru
-        var wlRes = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId + '&select=*&limit=1', {
-          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-        });
-        var wlData = await wlRes.json();
-        if (!wlData || !wlData[0]) throw new Error('Waitlist not found');
-        var wl = wlData[0];
+          // Hapus token lama
+          await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=eq.' + waitlistId, {
+            method: 'DELETE',
+            headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+          });
 
-        // Insert token baru
-        await fetch(SB_URL + '/rest/v1/launch_tokens', {
-          method: 'POST',
-          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({
-            token:        newToken,
-            waitlist_id:  waitlistId,
-            email:        wl.email,
-            phone:        wl.phone,
-            product:      wl.product,
-            color:        wl.color,
-            size:         wl.size,
-            variation_id: wl.variation_id || null,
-            expires_at:   expiresAt,
-            is_used:      false
-          })
-        });
+          // Fetch waitlist untuk data lengkap
+          var wlRes  = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId + '&select=*&limit=1', {
+            headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+          });
+          var wlData = await wlRes.json();
+          if (!wlData || !wlData[0]) throw new Error('Waitlist not found');
+          var wl = wlData[0];
 
-        // Reset waitlist status → invited
+          // Insert token baru
+          await fetch(SB_URL + '/rest/v1/launch_tokens', {
+            method: 'POST',
+            headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              token:        tokenToUse,
+              waitlist_id:  waitlistId,
+              email:        wl.email,
+              phone:        wl.phone,
+              product:      wl.product,
+              color:        wl.color,
+              size:         wl.size,
+              variation_id: wl.variation_id || null,
+              expires_at:   expiresAt,
+              is_used:      false
+            })
+          });
+
+        } else {
+          // ── RESET TOKEN EXISTING ──
+          tokenToUse = currentToken;
+
+          await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + currentToken, {
+            method: 'PATCH',
+            headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ is_used: false, used_at: null, woo_order_id: null, expires_at: expiresAt })
+          });
+        }
+
+        // Reset waitlist status → invited (kedua opsi)
         await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId, {
           method: 'PATCH',
           headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify({ status: 'invited' })
         });
 
-        showToast('Token berhasil direset → ' + newToken);
+        // ── KIRIM EMAIL ──
+        var accessLink  = 'https://jeddawear.com/jacket-access/?token=' + tokenToUse;
+        var firstName   = email.split('@')[0].split('.')[0];
+        firstName       = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+        var expiresDate = new Date(expiresAt);
+        var expiresStr  = expiresDate.toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })
+          + ', ' + expiresDate.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' WIB';
+
+        var html = '<div style="max-width:520px;margin:0 auto;font-family:Georgia,serif;color:#1A1917;padding:48px 32px;">'
+          + '<p style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#A09C97;margin:0 0 40px">Jedda</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 8px">Dear ' + firstName + ',</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 32px;color:#6B6760">Thank you for your patience.</p>'
+          + '<p style="font-size:15px;line-height:1.7;margin:0 0 32px">Your reserved access for the <strong>' + (pMap[product]||product) + '</strong> in ' + (cMap[color]||color) + ', ' + (sMap[size]||size) + ' is now available. Please use the link below to complete your order.</p>'
+          + '<div style="margin:0 0 32px"><a href="' + accessLink + '" style="display:inline-block;background:#1A1917;color:#F7F6F4;text-decoration:none;font-family:Arial,sans-serif;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;padding:14px 28px;">Complete Your Order</a></div>'
+          + '<p style="font-size:13px;line-height:1.7;color:#6B6760;margin:0 0 16px">This link is personal and valid until <strong>' + expiresStr + '</strong>.</p>'
+          + '<p style="font-size:13px;line-height:1.7;color:#6B6760;margin:0 0 40px">Please do not share this link. It is intended for your use only.</p>'
+          + '<p style="font-size:13px;color:#A09C97;margin:0">Warm regards,<br>Jedda</p>'
+          + '</div>';
+
+        var emailRes = await fetch(SB_URL + '/functions/v1/send-launch-email', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: email, subject: 'Your access is now open.', html: html })
+        });
+        var emailData = await emailRes.json();
+
+        if (emailRes.ok && emailData.ok) {
+          showToast('Token ' + (type === 'new' ? 'baru dibuat' : 'direset') + ' & email terkirim ke ' + email);
+        } else {
+          showToast('Token berhasil, tapi email gagal terkirim.', true);
+        }
+
         loadTokens();
         loadWaitlist(currentPage);
 
       } catch(e) {
-        showToast('Gagal reset token.', true);
+        showToast('Gagal. Coba lagi.', true);
         console.error(e);
       }
     }
