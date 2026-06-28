@@ -523,7 +523,7 @@
             <thead>
               <tr>
                 <th>Token</th><th>Email</th><th>No. HP</th><th>Produk</th>
-                <th>Dibuat</th><th>Expires</th><th>Status</th>
+                <th>Dibuat</th><th>Expires</th><th>Status</th><th></th><th></th>
               </tr>
             </thead>
             <tbody id="jd-tokens-body">
@@ -816,11 +816,11 @@
     }
     async function loadTokens() {
       var tbody = document.getElementById('jd-tokens-body');
-      tbody.innerHTML = '<tr><td colspan="7"><div class="jd-loading">Memuat...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="jd-loading">Memuat...</div></td></tr>';
       var result = await sbQuery('launch_tokens?select=*&order=created_at.desc&limit=200');
 
       if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="jd-empty">Belum ada token</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="jd-empty">Belum ada token</div></td></tr>';
         return;
       }
 
@@ -837,8 +837,69 @@
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.expires_at) + '</td>' +
           '<td><span class="badge badge-' + status + '">' + label + '</span></td>' +
+          '<td><button onclick="resetToken(\'' + row.waitlist_id + '\', \'' + row.email + '\')" style="font-family:\'Jost\',sans-serif;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;background:none;border:1px solid var(--border-strong);color:var(--text-2);padding:4px 10px;cursor:pointer;">Reset</button></td>' +
           '</tr>';
       }).join('');
+    }
+
+    // ── RESET TOKEN ──────────────────────────────────────────
+    async function resetToken(waitlistId, email) {
+      if (!confirm('Reset token untuk ' + email + '?\n\nToken lama akan diganti baru, status balik ke invited.')) return;
+
+      var newToken = genToken();
+      var hours    = parseInt(document.getElementById('jd-action-hours').value) || 48;
+      var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+
+      try {
+        showToast('Mereset token...');
+
+        // Delete token lama
+        await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=eq.' + waitlistId, {
+          method: 'DELETE',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+        });
+
+        // Fetch waitlist data untuk isi field token baru
+        var wlRes = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId + '&select=*&limit=1', {
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+        });
+        var wlData = await wlRes.json();
+        if (!wlData || !wlData[0]) throw new Error('Waitlist not found');
+        var wl = wlData[0];
+
+        // Insert token baru
+        await fetch(SB_URL + '/rest/v1/launch_tokens', {
+          method: 'POST',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            token:        newToken,
+            waitlist_id:  waitlistId,
+            email:        wl.email,
+            phone:        wl.phone,
+            product:      wl.product,
+            color:        wl.color,
+            size:         wl.size,
+            variation_id: wl.variation_id || null,
+            expires_at:   expiresAt,
+            is_used:      false
+          })
+        });
+
+        // Reset waitlist status → invited
+        await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId, {
+          method: 'PATCH',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ status: 'invited' })
+        });
+
+        showToast('Token berhasil direset → ' + newToken);
+        loadTokens();
+        loadWaitlist(currentPage);
+
+      } catch(e) {
+        showToast('Gagal reset token.', true);
+        console.error(e);
+      }
     }
 
     async function confirmBatch() {
