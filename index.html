@@ -545,6 +545,7 @@
       <div class="jd-section">
         <div class="jd-section-header">
           <span class="jd-section-title">Token Terkirim</span>
+          <span class="jd-section-subtitle" id="jd-tokens-summary" style="color:var(--text-3);font-size:12px;margin-left:10px"></span>
           <div class="jd-controls">
             <button class="jd-btn jd-btn-outline" onclick="loadTokens()">Refresh</button>
           </div>
@@ -896,19 +897,30 @@
     }
     async function loadTokens() {
       var tbody = document.getElementById('jd-tokens-body');
+      var summaryEl = document.getElementById('jd-tokens-summary');
       tbody.innerHTML = '<tr><td colspan="8"><div class="jd-loading">Memuat...</div></td></tr>';
       var result = await sbQuery('launch_tokens?select=*&order=created_at.desc&limit=200');
 
       if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="8"><div class="jd-empty">Belum ada token</div></td></tr>';
+        if (summaryEl) summaryEl.textContent = '';
         return;
       }
 
       var pMap = { rhea: 'Rhea', phi: 'Phi' };
+      var countActive = 0, countUsed = 0, countExpired = 0;
       tbody.innerHTML = result.data.map(function(row) {
         var expired = new Date(row.expires_at) < new Date();
         var status  = row.is_used ? 'purchased' : expired ? 'expired' : 'invited';
         var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : 'Aktif';
+        if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
+
+        var actionsHtml = row.is_used
+          ? '<span class="jd-dd-label" style="padding:8px 12px;display:block;color:var(--text-3)">Token sudah dipakai — tidak ada aksi</span>'
+          : '<span class="jd-dd-label">' + (row.email || '—') + '</span>' +
+            '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
+            '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>';
+
         return '<tr>' +
           '<td><code style="font-size:11px;letter-spacing:.04em">' + row.token + '</code></td>' +
           '<td>' + (row.email || '—') + '</td>' +
@@ -921,14 +933,16 @@
           '<div class="jd-token-action">' +
           '<button class="jd-token-action-btn" onclick="toggleTokenMenu(this)">Kelola ▾</button>' +
           '<div class="jd-token-dropdown">' +
-          '<span class="jd-dd-label">' + (row.email || '—') + '</span>' +
-          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
-          '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>' +
+          actionsHtml +
           '</div>' +
           '</div>' +
           '</td>' +
           '</tr>';
       }).join('');
+
+      if (summaryEl) {
+        summaryEl.textContent = countActive + ' aktif · ' + countUsed + ' dipakai · ' + countExpired + ' expired';
+      }
     }
 
     // ── TOKEN ACTION DROPDOWN ────────────────────────────────
@@ -1289,6 +1303,10 @@
       var cMap = { breen: 'Breen', auburn: 'Auburn' };
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
+      function csvField(v) {
+        return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+      }
+
       var rows = result.data.map(function(t) {
         return [
           t.email, fmtPhone(t.phone), t.token,
@@ -1297,7 +1315,7 @@
           cMap[t.color] || t.color || '',
           sMap[t.size] || t.size || '',
           fmtDate(t.expires_at)
-        ].join(',');
+        ].map(csvField).join(',');
       });
 
       var csv  = 'email,phone,token,access_link,product,color,size,expires_at\n' + rows.join('\n');
