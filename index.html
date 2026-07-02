@@ -871,7 +871,22 @@
 
       var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
 
+      // Token harus bawa private_variation_id (produk private), bukan variation_id
+      // dari pendaftaran publik — kalau salah, gate keamanan di produk akan
+      // menganggapnya mismatch dan customer yang sah malah ke-block.
+      var varRes = await fetch(SB_URL + '/rest/v1/launch_variations?select=product,color,size,private_variation_id', {
+        headers: authHeaders()
+      });
+      var varMap = {};
+      if (varRes.ok) {
+        var varRows = await varRes.json();
+        varRows.forEach(function(v) {
+          varMap[v.product + '|' + v.color + '|' + v.size] = v.private_variation_id;
+        });
+      }
+
       pendingBatch = rows.map(function(row) {
+        var key = row.product + '|' + row.color + '|' + row.size;
         return {
           token:        genToken(),
           waitlist_id:  row.id,
@@ -880,7 +895,7 @@
           product:      row.product,
           color:        row.color,
           size:         row.size,
-          variation_id: row.variation_id || null,
+          variation_id: varMap[key] || row.variation_id || null,
           expires_at:   expiresAt,
           is_used:      false
         };
@@ -999,6 +1014,18 @@
           if (!wlData || !wlData[0]) throw new Error('Waitlist not found');
           var wl = wlData[0];
 
+          // Ambil private_variation_id yang benar — jangan pakai wl.variation_id
+          // (itu ID varian publik), atau gate keamanan di produk akan salah
+          // mengira token ini mismatch dan customer yang sah malah ke-block.
+          var privVarRes = await fetch(
+            SB_URL + '/rest/v1/launch_variations?product=eq.' + encodeURIComponent(wl.product) +
+            '&color=eq.' + encodeURIComponent(wl.color) + '&size=eq.' + encodeURIComponent(wl.size) +
+            '&select=private_variation_id&limit=1',
+            { headers: authHeaders() }
+          );
+          var privVarData = privVarRes.ok ? await privVarRes.json() : [];
+          var privateVariationId = (privVarData[0] && privVarData[0].private_variation_id) || wl.variation_id || null;
+
           // Insert token baru
           var insRes = await fetch(SB_URL + '/rest/v1/launch_tokens', {
             method: 'POST',
@@ -1011,7 +1038,7 @@
               product:      wl.product,
               color:        wl.color,
               size:         wl.size,
-              variation_id: wl.variation_id || null,
+              variation_id: privateVariationId,
               expires_at:   expiresAt,
               is_used:      false
             })
