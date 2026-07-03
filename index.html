@@ -177,6 +177,20 @@
     .jd-section-title { font-size: 10px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
     .jd-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+    /* ── TABS ── */
+    .jd-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .jd-tab {
+      background: transparent; border: none; cursor: pointer;
+      padding: 12px 4px; margin-right: 24px;
+      font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--text-3); border-bottom: 2px solid transparent;
+      transition: color .15s ease, border-color .15s ease;
+    }
+    .jd-tab:hover { color: var(--text-2); }
+    .jd-tab.active { color: var(--text); border-bottom-color: var(--text); }
+    .jd-tab-panel { display: none; }
+    .jd-tab-panel.active { display: block; }
+
     /* ── INPUTS ── */
     select, input[type="number"] {
       font-family: 'Jost', sans-serif;
@@ -477,7 +491,14 @@
         </div>
       </div>
 
+      <!-- TAB NAV -->
+      <div class="jd-tabs">
+        <button class="jd-tab active" id="jd-tab-btn-waitlist" onclick="switchTab('waitlist')">Waitlist</button>
+        <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Terkirim</button>
+      </div>
+
       <!-- WAITLIST -->
+      <div class="jd-tab-panel active" id="jd-tab-panel-waitlist">
       <div class="jd-section">
         <div class="jd-section-header">
           <span class="jd-section-title">Waitlist</span>
@@ -541,8 +562,10 @@
           </div>
         </div>
       </div>
+      </div>
 
       <!-- TOKENS -->
+      <div class="jd-tab-panel" id="jd-tab-panel-tokens">
       <div class="jd-section">
         <div class="jd-section-header">
           <span class="jd-section-title">Token Terkirim</span>
@@ -564,6 +587,7 @@
             </tbody>
           </table>
         </div>
+      </div>
       </div>
 
     </div>
@@ -623,6 +647,13 @@
       loadWaitlist(1);
       loadTokens();
       loadAllocations();
+    }
+
+    function switchTab(name) {
+      ['waitlist', 'tokens'].forEach(function(t) {
+        document.getElementById('jd-tab-panel-' + t).classList.toggle('active', t === name);
+        document.getElementById('jd-tab-btn-' + t).classList.toggle('active', t === name);
+      });
     }
 
     async function refreshAllData() {
