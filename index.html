@@ -170,12 +170,18 @@
     .jd-stat-value { font-size: 28px; font-weight: 300; letter-spacing: -.02em; }
     .jd-stat-value.flagged { color: var(--flag); }
     .jd-stat-value.ok { color: var(--ok); }
+    .jd-stats-mini { grid-template-columns: repeat(3, 1fr); margin-bottom: 16px; }
+    .jd-stat-mini { padding: 14px 20px; }
+    .jd-stat-value-mini { font-size: 20px; }
 
     /* ── SECTION ── */
     .jd-section { background: var(--surface); border: 1px solid var(--border); margin-bottom: 16px; }
     .jd-section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .jd-section-title { font-size: 10px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
     .jd-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .jd-section-header-toggle { cursor: pointer; user-select: none; }
+    .jd-chevron { display: inline-block; margin-right: 6px; transition: transform .15s ease; font-size: 9px; }
+    .jd-chevron.open { transform: rotate(90deg); }
 
     /* ── TABS ── */
     .jd-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
@@ -380,8 +386,14 @@
 
     @media (max-width: 640px) {
       .jd-stats { grid-template-columns: repeat(2,1fr); }
+      .jd-stats-mini { grid-template-columns: repeat(3,1fr); }
       .jd-main { padding: 16px; }
       .jd-header { padding: 14px 16px; }
+      .jd-table-waitlist th:nth-child(4), .jd-table-waitlist td:nth-child(4),
+      .jd-table-waitlist th:nth-child(7), .jd-table-waitlist td:nth-child(7),
+      .jd-table-waitlist th:nth-child(9), .jd-table-waitlist td:nth-child(9) { display: none; }
+      .jd-table-tokens th:nth-child(3), .jd-table-tokens td:nth-child(3),
+      .jd-table-tokens th:nth-child(5), .jd-table-tokens td:nth-child(5) { display: none; }
     }
   </style>
 </head>
@@ -440,54 +452,59 @@
 
       <!-- ALOKASI STOK -->
       <div class="jd-section" id="jd-alloc-section">
-        <div class="jd-section-header">
-          <span class="jd-section-title">Alokasi Stok</span>
-          <div class="jd-controls">
+        <div class="jd-section-header jd-section-header-toggle" onclick="toggleAllocSection()">
+          <span class="jd-section-title">
+            <span class="jd-chevron" id="jd-alloc-chevron">▸</span>
+            Alokasi Stok
+          </span>
+          <div class="jd-controls" onclick="event.stopPropagation()">
             <button class="jd-btn jd-btn-outline" onclick="toggleAllocForm()">+ Tambah Alokasi</button>
             <button class="jd-btn jd-btn-outline" onclick="loadAllocations()">Refresh</button>
           </div>
         </div>
 
-        <!-- FORM TAMBAH ALOKASI (hidden by default) -->
-        <div class="jd-alloc-form" id="jd-alloc-form" style="display:none;">
-          <div class="jd-form-group">
-            <div class="jd-form-label">Batch Label</div>
-            <input type="text" id="jd-alloc-batch" class="jd-alloc-input" placeholder="Batch 1">
+        <div id="jd-alloc-collapsible" style="display:none;">
+          <!-- FORM TAMBAH ALOKASI (hidden by default) -->
+          <div class="jd-alloc-form" id="jd-alloc-form" style="display:none;">
+            <div class="jd-form-group">
+              <div class="jd-form-label">Batch Label</div>
+              <input type="text" id="jd-alloc-batch" class="jd-alloc-input" placeholder="Batch 1">
+            </div>
+            <div class="jd-form-group">
+              <div class="jd-form-label">Produk</div>
+              <select id="jd-alloc-product" class="jd-alloc-input">
+                <option value="rhea">Rhea Flare Jacket</option>
+                <option value="phi">Phi Jacket</option>
+              </select>
+            </div>
+            <div class="jd-form-group">
+              <div class="jd-form-label">Warna</div>
+              <select id="jd-alloc-color" class="jd-alloc-input">
+                <option value="breen">Breen</option>
+                <option value="auburn">Auburn</option>
+              </select>
+            </div>
+            <div class="jd-form-group">
+              <div class="jd-form-label">Ukuran</div>
+              <select id="jd-alloc-size" class="jd-alloc-input">
+                <option value="sm">S/M</option>
+                <option value="lxl">L/XL</option>
+              </select>
+            </div>
+            <div class="jd-form-group">
+              <div class="jd-form-label">Qty</div>
+              <input type="number" id="jd-alloc-qty" class="jd-alloc-input" placeholder="0" min="1" max="99" style="width:70px">
+            </div>
+            <div class="jd-form-group">
+              <div class="jd-form-label">&nbsp;</div>
+              <button class="jd-btn jd-btn-dark" onclick="saveAllocation()">Simpan</button>
+            </div>
           </div>
-          <div class="jd-form-group">
-            <div class="jd-form-label">Produk</div>
-            <select id="jd-alloc-product" class="jd-alloc-input">
-              <option value="rhea">Rhea Flare Jacket</option>
-              <option value="phi">Phi Jacket</option>
-            </select>
-          </div>
-          <div class="jd-form-group">
-            <div class="jd-form-label">Warna</div>
-            <select id="jd-alloc-color" class="jd-alloc-input">
-              <option value="breen">Breen</option>
-              <option value="auburn">Auburn</option>
-            </select>
-          </div>
-          <div class="jd-form-group">
-            <div class="jd-form-label">Ukuran</div>
-            <select id="jd-alloc-size" class="jd-alloc-input">
-              <option value="sm">S/M</option>
-              <option value="lxl">L/XL</option>
-            </select>
-          </div>
-          <div class="jd-form-group">
-            <div class="jd-form-label">Qty</div>
-            <input type="number" id="jd-alloc-qty" class="jd-alloc-input" placeholder="0" min="1" max="99" style="width:70px">
-          </div>
-          <div class="jd-form-group">
-            <div class="jd-form-label">&nbsp;</div>
-            <button class="jd-btn jd-btn-dark" onclick="saveAllocation()">Simpan</button>
-          </div>
-        </div>
 
-        <!-- KARTU ALOKASI -->
-        <div id="jd-alloc-body">
-          <div class="jd-loading">Memuat...</div>
+          <!-- KARTU ALOKASI -->
+          <div id="jd-alloc-body">
+            <div class="jd-loading">Memuat...</div>
+          </div>
         </div>
       </div>
 
@@ -541,7 +558,7 @@
         </div>
 
         <div class="jd-table-wrap">
-          <table>
+          <table class="jd-table-waitlist">
             <thead>
               <tr>
                 <th style="width:40px"><input type="checkbox" id="jd-check-all" onchange="toggleSelectAll(this)" style="cursor:pointer"></th>
@@ -566,16 +583,29 @@
 
       <!-- TOKENS -->
       <div class="jd-tab-panel" id="jd-tab-panel-tokens">
+      <div class="jd-stats jd-stats-mini" id="jd-tokens-stats">
+        <div class="jd-stat jd-stat-mini">
+          <div class="jd-stat-label">Aktif</div>
+          <div class="jd-stat-value jd-stat-value-mini" id="jd-token-stat-active">—</div>
+        </div>
+        <div class="jd-stat jd-stat-mini">
+          <div class="jd-stat-label">Dipakai</div>
+          <div class="jd-stat-value jd-stat-value-mini ok" id="jd-token-stat-used">—</div>
+        </div>
+        <div class="jd-stat jd-stat-mini">
+          <div class="jd-stat-label">Expired</div>
+          <div class="jd-stat-value jd-stat-value-mini" id="jd-token-stat-expired">—</div>
+        </div>
+      </div>
       <div class="jd-section">
         <div class="jd-section-header">
           <span class="jd-section-title">Token Terkirim</span>
-          <span class="jd-section-subtitle" id="jd-tokens-summary" style="color:var(--text-3);font-size:12px;margin-left:10px"></span>
           <div class="jd-controls">
             <button class="jd-btn jd-btn-outline" onclick="loadTokens()">Refresh</button>
           </div>
         </div>
         <div class="jd-table-wrap">
-          <table>
+          <table class="jd-table-tokens">
             <thead>
               <tr>
                 <th>Token</th><th>Email</th><th>No. HP</th><th>Produk</th>
@@ -647,6 +677,14 @@
       loadWaitlist(1);
       loadTokens();
       loadAllocations();
+    }
+
+    function toggleAllocSection() {
+      var body = document.getElementById('jd-alloc-collapsible');
+      var chevron = document.getElementById('jd-alloc-chevron');
+      var isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      chevron.classList.toggle('open', !isOpen);
     }
 
     function switchTab(name) {
@@ -963,13 +1001,14 @@
     }
     async function loadTokens() {
       var tbody = document.getElementById('jd-tokens-body');
-      var summaryEl = document.getElementById('jd-tokens-summary');
       tbody.innerHTML = '<tr><td colspan="8"><div class="jd-loading">Memuat...</div></td></tr>';
       var result = await sbQuery('launch_tokens?select=*&order=created_at.desc&limit=200');
 
       if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="8"><div class="jd-empty">Belum ada token</div></td></tr>';
-        if (summaryEl) summaryEl.textContent = '';
+        document.getElementById('jd-token-stat-active').textContent = '0';
+        document.getElementById('jd-token-stat-used').textContent = '0';
+        document.getElementById('jd-token-stat-expired').textContent = '0';
         return;
       }
 
@@ -1006,9 +1045,9 @@
           '</tr>';
       }).join('');
 
-      if (summaryEl) {
-        summaryEl.textContent = countActive + ' aktif · ' + countUsed + ' dipakai · ' + countExpired + ' expired';
-      }
+      document.getElementById('jd-token-stat-active').textContent  = countActive;
+      document.getElementById('jd-token-stat-used').textContent    = countUsed;
+      document.getElementById('jd-token-stat-expired').textContent = countExpired;
     }
 
     // ── TOKEN ACTION DROPDOWN ────────────────────────────────
