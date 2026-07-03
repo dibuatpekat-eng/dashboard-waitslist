@@ -1084,11 +1084,16 @@
         var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : 'Aktif';
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
 
-        var actionsHtml = row.is_used
+        var actionButtons =
+          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
+          '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>';
+
+        // Token yang sudah dipakai (sudah ada order lunas di baliknya) dikunci di
+        // production untuk mencegah reset tanpa sadar bikin slot yang sama terjual
+        // dua kali. Di staging dilonggarkan supaya bisa bebas dites ulang.
+        var actionsHtml = (row.is_used && jdEnv === 'production')
           ? '<span class="jd-dd-label" style="padding:8px 12px;display:block;color:var(--text-3)">Token sudah dipakai — tidak ada aksi</span>'
-          : '<span class="jd-dd-label">' + (row.email || '—') + '</span>' +
-            '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
-            '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>';
+          : '<span class="jd-dd-label">' + (row.email || '—') + '</span>' + actionButtons;
 
         return '<tr>' +
           '<td><code style="font-size:11px;letter-spacing:.04em">' + row.token + '</code></td>' +
