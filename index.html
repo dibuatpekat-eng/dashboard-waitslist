@@ -436,9 +436,9 @@
       <div class="jd-header-meta">
         <span id="jd-header-date"></span>
         <div class="jd-env-switch" title="Domain used for access links sent to customers">
-          <button type="button" class="jd-env-btn" id="jd-env-staging-btn" onclick="setEnv('staging')">Staging</button>
+          <button type="button" class="jd-env-btn" id="jd-env-staging-btn" onclick="switchEnv('staging')">Staging</button>
           <span>|</span>
-          <button type="button" class="jd-env-btn" id="jd-env-production-btn" onclick="setEnv('production')">Production</button>
+          <button type="button" class="jd-env-btn" id="jd-env-production-btn" onclick="switchEnv('production')">Production</button>
         </div>
         <button class="jd-header-logout" id="jd-refresh-all-btn" onclick="refreshAllData()">Refresh</button>
         <button class="jd-header-logout" onclick="jdLogout()">Log out</button>
@@ -694,6 +694,14 @@
       localStorage.setItem('jd_env', jdEnv);
       document.getElementById('jd-env-staging-btn').classList.toggle('active', jdEnv === 'staging');
       document.getElementById('jd-env-production-btn').classList.toggle('active', jdEnv === 'production');
+    }
+
+    // Called from the toggle buttons — also re-renders the tokens table so the
+    // "Kelola" actions (locked/unlocked per env) update immediately instead of
+    // only taking effect after a manual page refresh.
+    function switchEnv(env) {
+      setEnv(env);
+      loadTokens();
     }
 
     function getAccessDomain() {
