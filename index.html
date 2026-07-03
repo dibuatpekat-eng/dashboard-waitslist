@@ -397,6 +397,7 @@
       <div class="jd-header-brand">Jedda — Launch</div>
       <div class="jd-header-meta">
         <span id="jd-header-date"></span>
+        <button class="jd-header-logout" id="jd-refresh-all-btn" onclick="refreshAllData()">Refresh</button>
         <button class="jd-header-logout" onclick="jdLogout()">Log out</button>
       </div>
     </div>
@@ -622,6 +623,25 @@
       loadWaitlist(1);
       loadTokens();
       loadAllocations();
+    }
+
+    async function refreshAllData() {
+      var btn = document.getElementById('jd-refresh-all-btn');
+      btn.disabled = true;
+      btn.textContent = 'Refreshing...';
+      try {
+        await Promise.all([
+          loadWaitlist(currentPage),
+          loadTokens(),
+          loadAllocations()
+        ]);
+        showToast('Data refreshed.');
+      } catch (e) {
+        showToast('Failed to refresh data.', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+      }
     }
 
     async function jdLogin() {
