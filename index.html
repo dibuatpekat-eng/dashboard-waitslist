@@ -153,6 +153,18 @@
 
     .jd-header-logout:hover { color: var(--text); }
 
+    .jd-env-switch {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; letter-spacing: 0.08em; color: var(--text-3);
+      border: 1px solid var(--border); padding: 4px 10px;
+    }
+    .jd-env-btn {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font-family: 'Jost', sans-serif; font-size: 10px; font-weight: 500;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3);
+    }
+    .jd-env-btn.active { color: var(--text); text-decoration: underline; }
+
     .jd-main { padding: 32px; max-width: 1400px; margin: 0 auto; }
 
     /* ── STATS ── */
@@ -423,6 +435,11 @@
       <div class="jd-header-brand">Jedda — Launch</div>
       <div class="jd-header-meta">
         <span id="jd-header-date"></span>
+        <div class="jd-env-switch" title="Domain used for access links sent to customers">
+          <button type="button" class="jd-env-btn" id="jd-env-staging-btn" onclick="setEnv('staging')">Staging</button>
+          <span>|</span>
+          <button type="button" class="jd-env-btn" id="jd-env-production-btn" onclick="setEnv('production')">Production</button>
+        </div>
         <button class="jd-header-logout" id="jd-refresh-all-btn" onclick="refreshAllData()">Refresh</button>
         <button class="jd-header-logout" onclick="jdLogout()">Log out</button>
       </div>
@@ -668,6 +685,21 @@
     var lastBatchSent  = [];
     var lastBatchHours = 48;
 
+    // ── ENV SWITCH (domain used for access links) ─────────────
+    var ENV_DOMAINS = { staging: 'https://beta2.jeddawear.com', production: 'https://jeddawear.com' };
+    var jdEnv = localStorage.getItem('jd_env') === 'production' ? 'production' : 'staging';
+
+    function setEnv(env) {
+      jdEnv = (env === 'production') ? 'production' : 'staging';
+      localStorage.setItem('jd_env', jdEnv);
+      document.getElementById('jd-env-staging-btn').classList.toggle('active', jdEnv === 'staging');
+      document.getElementById('jd-env-production-btn').classList.toggle('active', jdEnv === 'production');
+    }
+
+    function getAccessDomain() {
+      return ENV_DOMAINS[jdEnv];
+    }
+
     function fmtDuration(hours) {
       if (hours >= 168 && hours % 168 === 0) {
         var days = hours / 168 * 7;
@@ -704,6 +736,7 @@
       document.getElementById('jd-login').style.display = 'none';
       document.getElementById('jd-app').style.display = 'block';
       document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      setEnv(jdEnv);
       loadWaitlist(1);
       loadTokens();
       loadAllocations();
@@ -1188,7 +1221,7 @@
         });
 
         // ── KIRIM EMAIL ──
-        var accessLink  = 'https://jeddawear.com/jacket-access/?token=' + tokenToUse;
+        var accessLink  = getAccessDomain() + '/jacket-access/?token=' + tokenToUse;
         var firstName   = email.split('@')[0].split('.')[0];
         firstName       = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
@@ -1271,7 +1304,7 @@
         var productLabel = pMap[t.product] || t.product || 'Jacket';
         var colorLabel   = cMap[t.color] || t.color || '';
         var sizeLabel    = sMap[t.size] || t.size || '';
-        var accessLink   = 'https://jeddawear.com/jacket-access/?token=' + t.token;
+        var accessLink   = getAccessDomain() + '/jacket-access/?token=' + t.token;
 
         var html = buildLaunchEmailHtml(firstName, productLabel, colorLabel, sizeLabel, accessLink, lastBatchHours);
 
@@ -1434,7 +1467,7 @@
       var rows = result.data.map(function(t) {
         return [
           t.email, fmtPhone(t.phone), t.token,
-          'https://jeddawear.com/jacket-access/?token=' + t.token,
+          getAccessDomain() + '/jacket-access/?token=' + t.token,
           pMap[t.product] || t.product || '',
           cMap[t.color] || t.color || '',
           sMap[t.size] || t.size || '',
