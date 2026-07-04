@@ -15,6 +15,7 @@
       --flag: #C0392B; --flag-bg: #FDF2F1; --flag-border: #F5C6C2;
       --ok: #1A6B3C; --ok-bg: #F0FAF4; --ok-border: #A8DFC0;
       --warn: #7D5A00; --warn-bg: #FDF8EC; --warn-border: #EDD98A;
+      --bought: #1D4E89; --bought-bg: #EEF4FB; --bought-border: #BBD3EC;
     }
 
     body {
@@ -265,6 +266,8 @@
     .badge-invited { background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; }
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
+    .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); cursor: help; }
+    .jd-flag-cell { display: flex; flex-wrap: wrap; gap: 4px; }
     /* ── TOKEN ACTION DROPDOWN ── */
     .jd-token-action { position: relative; display: inline-block; }
     .jd-token-action-btn {
@@ -556,7 +559,8 @@
             <select id="jd-filter-flag" onchange="loadWaitlist(1)">
               <option value="">Semua</option>
               <option value="clean">Bersih</option>
-              <option value="flagged">Flagged</option>
+              <option value="flagged">Jastip</option>
+              <option value="bought">Sudah Beli</option>
             </select>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
           </div>
@@ -942,10 +946,10 @@
     // ── STATS ────────────────────────────────────────────────
     async function loadStats() {
       var r = await Promise.all([
-        sbQuery('launch_waitlist?select=id'),
-        sbQuery('launch_waitlist?select=id&is_flagged=eq.false'),
-        sbQuery('launch_waitlist?select=id&is_flagged=eq.true'),
-        sbQuery('launch_waitlist?select=id&status=eq.invited')
+        sbQuery('launch_waitlist_view?select=id'),
+        sbQuery('launch_waitlist_view?select=id&is_flagged=eq.false&already_purchased=eq.false'),
+        sbQuery('launch_waitlist_view?select=id&is_flagged=eq.true'),
+        sbQuery('launch_waitlist_view?select=id&status=eq.invited')
       ]);
       document.getElementById('jd-stat-total').textContent   = r[0].count != null ? r[0].count : '—';
       document.getElementById('jd-stat-clean').textContent   = r[1].count != null ? r[1].count : '—';
@@ -1013,10 +1017,11 @@
 
       var sf = document.getElementById('jd-filter-status').value;
       var ff = document.getElementById('jd-filter-flag').value;
-      var q  = 'launch_waitlist?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
+      var q  = 'launch_waitlist_view?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
       if (sf) q += '&status=eq.' + sf;
-      if (ff === 'clean')   q += '&is_flagged=eq.false';
+      if (ff === 'clean')   q += '&is_flagged=eq.false&already_purchased=eq.false';
       if (ff === 'flagged') q += '&is_flagged=eq.true';
+      if (ff === 'bought')  q += '&already_purchased=eq.true';
 
       var from = (page - 1) * PAGE_SIZE;
       var to   = from + PAGE_SIZE - 1;
@@ -1042,7 +1047,7 @@
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
       tbody.innerHTML = result.data.map(function(row, i) {
-        var eligible = (!row.is_flagged && row.status === 'pending') ? '1' : '0';
+        var eligible = (!row.is_flagged && !row.already_purchased && row.status === 'pending') ? '1' : '0';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
         return '<tr style="' + (eligible === '0' ? 'opacity:0.6' : '') + '">' +
           '<td><input type="checkbox" class="jd-row-check" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -1053,9 +1058,11 @@
           '<td style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
           '<td><span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span></td>' +
-          '<td>' + (row.is_flagged
-            ? '<span class="badge badge-flag">Flagged</span>'
-            : '<span class="badge badge-ok">Bersih</span>') + '</td>' +
+          '<td><div class="jd-flag-cell">' +
+          (row.is_flagged ? '<span class="badge badge-flag">Jastip</span>' : '') +
+          (row.already_purchased ? '<span class="badge badge-bought" title="' + (row.purchased_product_name || 'Sudah beli') + ' — ' + fmtDate(row.purchased_order_date) + ' — Order #' + row.purchased_order_id + '">Sudah Beli</span>' : '') +
+          (!row.is_flagged && !row.already_purchased ? '<span class="badge badge-ok">Bersih</span>' : '') +
+          '</div></td>' +
           '</tr>';
       }).join('');
 
