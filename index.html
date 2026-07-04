@@ -266,8 +266,11 @@
     .badge-invited { background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; }
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
-    .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); cursor: help; }
-    .jd-flag-cell { display: flex; flex-wrap: wrap; gap: 4px; }
+    .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
+    .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .jd-flag-detail { font-size: 10px; color: var(--text-3); line-height: 1.4; }
+    .jd-stat { cursor: pointer; transition: background 0.15s; }
+    .jd-stat:hover { background: var(--bg); }
     /* ── TOKEN ACTION DROPDOWN ── */
     .jd-token-action { position: relative; display: inline-block; }
     .jd-token-action-btn {
@@ -462,19 +465,19 @@
 
       <!-- STATS -->
       <div class="jd-stats">
-        <div class="jd-stat">
+        <div class="jd-stat" onclick="filterByStat('total')" title="Lihat semua pendaftar">
           <div class="jd-stat-label">Total Pendaftar</div>
           <div class="jd-stat-value" id="jd-stat-total">—</div>
         </div>
-        <div class="jd-stat">
+        <div class="jd-stat" onclick="filterByStat('clean')" title="Lihat pendaftar bersih (belum diproses)">
           <div class="jd-stat-label">Bersih (Eligible)</div>
           <div class="jd-stat-value ok" id="jd-stat-clean">—</div>
         </div>
-        <div class="jd-stat">
+        <div class="jd-stat" onclick="filterByStat('flagged')" title="Lihat pendaftar yang keflag jastip">
           <div class="jd-stat-label">Flagged Jastip</div>
           <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
         </div>
-        <div class="jd-stat">
+        <div class="jd-stat" onclick="filterByStat('invited')" title="Lihat pendaftar yang sudah dikirimi undangan">
           <div class="jd-stat-label">Undangan Terkirim</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
         </div>
@@ -560,7 +563,7 @@
               <option value="">Semua</option>
               <option value="clean">Bersih</option>
               <option value="flagged">Jastip</option>
-              <option value="bought">Sudah Beli</option>
+              <option value="bought">Pernah Beli</option>
             </select>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
           </div>
@@ -808,6 +811,22 @@
       });
     }
 
+    // Klik kartu ringkasan -> filter tabel Waitlist sesuai kartu yg diklik.
+    function filterByStat(which) {
+      switchTab('waitlist');
+      var statusSel = document.getElementById('jd-filter-status');
+      var flagSel   = document.getElementById('jd-filter-flag');
+      statusSel.value = '';
+      flagSel.value   = '';
+      if (which === 'clean')        { flagSel.value = 'clean'; statusSel.value = 'pending'; }
+      else if (which === 'flagged') { flagSel.value = 'flagged'; }
+      else if (which === 'invited') { statusSel.value = 'invited'; }
+      // 'total' -> semua filter dikosongkan (sudah di atas)
+      loadWaitlist(1);
+      var section = document.getElementById('jd-tab-panel-waitlist');
+      if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     async function refreshAllData() {
       var btn = document.getElementById('jd-refresh-all-btn');
       btn.disabled = true;
@@ -1048,6 +1067,11 @@
 
       tbody.innerHTML = result.data.map(function(row, i) {
         var eligible = (!row.is_flagged && !row.already_purchased && row.status === 'pending') ? '1' : '0';
+        // Kalau status baris ini SENDIRI udah "purchased", flag "sudah beli" pasti
+        // ikut nyala juga (match ke pembelian yg sama) -- itu bukan info baru, cuma
+        // gaung. Flag ini baru berguna buat entry yang BUKAN hasil pembelian dia
+        // sendiri (misal: daftar lagi padahal dulu udah pernah beli produk ini).
+        var showBoughtFlag = row.already_purchased && row.status !== 'purchased';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
         return '<tr style="' + (eligible === '0' ? 'opacity:0.6' : '') + '">' +
           '<td><input type="checkbox" class="jd-row-check" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -1060,8 +1084,8 @@
           '<td><span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span></td>' +
           '<td><div class="jd-flag-cell">' +
           (row.is_flagged ? '<span class="badge badge-flag">Jastip</span>' : '') +
-          (row.already_purchased ? '<span class="badge badge-bought" title="' + (row.purchased_product_name || 'Sudah beli') + ' — ' + fmtDate(row.purchased_order_date) + ' — Order #' + row.purchased_order_id + '">Sudah Beli</span>' : '') +
-          (!row.is_flagged && !row.already_purchased ? '<span class="badge badge-ok">Bersih</span>' : '') +
+          (showBoughtFlag ? '<span class="badge badge-bought">Pernah Beli</span><span class="jd-flag-detail">' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>' : '') +
+          (!row.is_flagged && !showBoughtFlag ? '<span class="badge badge-ok">Bersih</span>' : '') +
           '</div></td>' +
           '</tr>';
       }).join('');
