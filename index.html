@@ -396,17 +396,27 @@
     .jd-alloc-input:focus { border-color: var(--text); }
     .jd-alloc-input::placeholder { color: var(--text-3); }
 
+    /* ── MOBILE SCROLL HINT (hidden by default, shown under 640px) ── */
+    .jd-scroll-hint { display: none; font-size: 10px; color: var(--text-3); padding: 8px 16px 0; }
+
     @media (max-width: 640px) {
       .jd-stats { grid-template-columns: repeat(2,1fr); }
       .jd-stats-mini { grid-template-columns: repeat(3,1fr); }
       .jd-main { padding: 16px; }
-      .jd-header { padding: 14px 16px; }
+      .jd-header { padding: 14px 16px; flex-wrap: wrap; row-gap: 10px; }
+      .jd-header-meta { flex-wrap: wrap; width: 100%; justify-content: flex-start; row-gap: 8px; }
       .jd-table-waitlist th:nth-child(4), .jd-table-waitlist td:nth-child(4),
       .jd-table-waitlist th:nth-child(7), .jd-table-waitlist td:nth-child(7),
       .jd-table-waitlist th:nth-child(9), .jd-table-waitlist td:nth-child(9) { display: none; }
       .jd-table-tokens th:nth-child(3), .jd-table-tokens td:nth-child(3),
       .jd-table-tokens th:nth-child(5), .jd-table-tokens td:nth-child(5) { display: none; }
+      .jd-scroll-hint { display: block; }
     }
+
+    /* ── SORTABLE COLUMNS ── */
+    th.jd-sortable { cursor: pointer; user-select: none; }
+    th.jd-sortable:hover { color: var(--text); }
+    .jd-sort-ind { display: inline-block; margin-left: 4px; font-size: 9px; }
   </style>
 </head>
 <body>
@@ -462,7 +472,7 @@
           <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
         </div>
         <div class="jd-stat">
-          <div class="jd-stat-label">Sudah Diundang</div>
+          <div class="jd-stat-label">Undangan Terkirim</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
         </div>
       </div>
@@ -476,7 +486,6 @@
           </span>
           <div class="jd-controls" onclick="event.stopPropagation()">
             <button class="jd-btn jd-btn-outline" onclick="toggleAllocForm()">+ Tambah Alokasi</button>
-            <button class="jd-btn jd-btn-outline" onclick="loadAllocations()">Refresh</button>
           </div>
         </div>
 
@@ -540,7 +549,7 @@
             <select id="jd-filter-status" onchange="loadWaitlist(1)">
               <option value="">Semua Status</option>
               <option value="pending">Pending</option>
-              <option value="invited">Diundang</option>
+              <option value="invited">Undangan Terkirim</option>
               <option value="purchased">Sudah Beli</option>
               <option value="expired">Expired</option>
             </select>
@@ -550,7 +559,6 @@
               <option value="flagged">Flagged</option>
             </select>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
-            <button class="jd-btn jd-btn-outline" onclick="loadWaitlist(1)">Refresh</button>
           </div>
         </div>
 
@@ -574,13 +582,19 @@
           </div>
         </div>
 
+        <div class="jd-scroll-hint">← Geser tabel untuk lihat kolom lainnya →</div>
         <div class="jd-table-wrap">
           <table class="jd-table-waitlist">
             <thead>
               <tr>
                 <th style="width:40px"><input type="checkbox" id="jd-check-all" onchange="toggleSelectAll(this)" style="cursor:pointer"></th>
-                <th>#</th><th>Email</th><th>No. HP</th><th>Produk</th>
-                <th>Warna / Ukuran</th><th>Daftar</th><th>Status</th><th>Flag</th>
+                <th>#</th>
+                <th class="jd-sortable" onclick="setWaitlistSort('email')">Email<span class="jd-sort-ind" id="jd-sort-ind-email"></span></th>
+                <th>No. HP</th><th>Produk</th>
+                <th>Warna / Ukuran</th>
+                <th class="jd-sortable" onclick="setWaitlistSort('registered_at')">Daftar<span class="jd-sort-ind" id="jd-sort-ind-registered_at"></span></th>
+                <th class="jd-sortable" onclick="setWaitlistSort('status')">Status<span class="jd-sort-ind" id="jd-sort-ind-status"></span></th>
+                <th>Flag</th>
               </tr>
             </thead>
             <tbody id="jd-waitlist-body">
@@ -617,16 +631,18 @@
       <div class="jd-section">
         <div class="jd-section-header">
           <span class="jd-section-title">Token Terkirim</span>
-          <div class="jd-controls">
-            <button class="jd-btn jd-btn-outline" onclick="loadTokens()">Refresh</button>
-          </div>
         </div>
+        <div class="jd-scroll-hint">← Geser tabel untuk lihat kolom lainnya →</div>
         <div class="jd-table-wrap">
           <table class="jd-table-tokens">
             <thead>
               <tr>
-                <th>Token</th><th>Email</th><th>No. HP</th><th>Produk</th>
-                <th>Dibuat</th><th>Expires</th><th>Status</th><th></th><th></th>
+                <th>Token</th>
+                <th class="jd-sortable" onclick="setTokenSort('email')">Email<span class="jd-sort-ind" id="jd-sort-ind-tok-email"></span></th>
+                <th>No. HP</th><th>Produk</th>
+                <th class="jd-sortable" onclick="setTokenSort('created_at')">Dibuat<span class="jd-sort-ind" id="jd-sort-ind-tok-created_at"></span></th>
+                <th class="jd-sortable" onclick="setTokenSort('expires_at')">Expires<span class="jd-sort-ind" id="jd-sort-ind-tok-expires_at"></span></th>
+                <th>Status</th><th></th><th></th>
               </tr>
             </thead>
             <tbody id="jd-tokens-body">
@@ -684,6 +700,29 @@
     var pendingBatch   = [];
     var lastBatchSent  = [];
     var lastBatchHours = 48;
+    // Both tables default to newest-first so behavior is consistent between tabs.
+    var waitlistSort = { col: 'registered_at', dir: 'desc' };
+    var tokenSort    = { col: 'created_at', dir: 'desc' };
+    var STATUS_LABELS = { pending: 'Pending', invited: 'Undangan Terkirim', purchased: 'Sudah Beli', expired: 'Expired' };
+
+    function setWaitlistSort(col) {
+      waitlistSort.dir = (waitlistSort.col === col && waitlistSort.dir === 'desc') ? 'asc' : 'desc';
+      waitlistSort.col = col;
+      loadWaitlist(1);
+    }
+
+    function setTokenSort(col) {
+      tokenSort.dir = (tokenSort.col === col && tokenSort.dir === 'desc') ? 'asc' : 'desc';
+      tokenSort.col = col;
+      loadTokens();
+    }
+
+    function renderSortIndicators(idPrefix, sortState, cols) {
+      cols.forEach(function(c) {
+        var el = document.getElementById(idPrefix + c);
+        if (el) el.textContent = (sortState.col === c) ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+      });
+    }
 
     // ── ENV SWITCH (domain used for access links) ─────────────
     var ENV_DOMAINS = { staging: 'https://beta2.jeddawear.com', production: 'https://jeddawear.com' };
@@ -970,9 +1009,11 @@
       var tbody = document.getElementById('jd-waitlist-body');
       tbody.innerHTML = '<tr><td colspan="10"><div class="jd-loading">Memuat...</div></td></tr>';
 
+      renderSortIndicators('jd-sort-ind-', waitlistSort, ['email', 'registered_at', 'status']);
+
       var sf = document.getElementById('jd-filter-status').value;
       var ff = document.getElementById('jd-filter-flag').value;
-      var q  = 'launch_waitlist?select=*&order=registered_at.asc';
+      var q  = 'launch_waitlist?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
       if (sf) q += '&status=eq.' + sf;
       if (ff === 'clean')   q += '&is_flagged=eq.false';
       if (ff === 'flagged') q += '&is_flagged=eq.true';
@@ -1011,7 +1052,7 @@
           '<td style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
           '<td style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
-          '<td><span class="badge badge-' + row.status + '">' + row.status + '</span></td>' +
+          '<td><span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span></td>' +
           '<td>' + (row.is_flagged
             ? '<span class="badge badge-flag">Flagged</span>'
             : '<span class="badge badge-ok">Bersih</span>') + '</td>' +
@@ -1072,9 +1113,10 @@
       openModal('jd-modal-batch');
     }
     async function loadTokens() {
+      renderSortIndicators('jd-sort-ind-tok-', tokenSort, ['email', 'created_at', 'expires_at']);
       var tbody = document.getElementById('jd-tokens-body');
       tbody.innerHTML = '<tr><td colspan="8"><div class="jd-loading">Memuat...</div></td></tr>';
-      var result = await sbQuery('launch_tokens?select=*&order=created_at.desc&limit=200');
+      var result = await sbQuery('launch_tokens?select=*&order=' + tokenSort.col + '.' + tokenSort.dir + '&limit=200');
 
       if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="8"><div class="jd-empty">Belum ada token</div></td></tr>';
