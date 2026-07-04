@@ -540,10 +540,25 @@
         </div>
       </div>
 
+      <!-- DATABASE JASTIP (referensi, read-only dari sistem jastip_detector) -->
+      <div class="jd-section" id="jd-jastip-section">
+        <div class="jd-section-header jd-section-header-toggle" onclick="toggleJastipSection()">
+          <span class="jd-section-title">
+            <span class="jd-chevron" id="jd-jastip-chevron">▸</span>
+            Database Jastip <span style="font-weight:400;font-size:11px;color:var(--text-3)">— referensi dari sistem jastip_detector, link via no. HP</span>
+          </span>
+        </div>
+        <div id="jd-jastip-collapsible" style="display:none;">
+          <div id="jd-jastip-body">
+            <div class="jd-loading">Memuat...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- TAB NAV -->
       <div class="jd-tabs">
         <button class="jd-tab active" id="jd-tab-btn-waitlist" onclick="switchTab('waitlist')">Waitlist</button>
-        <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Terkirim</button>
+        <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
       </div>
 
       <!-- WAITLIST -->
@@ -637,7 +652,7 @@
       </div>
       <div class="jd-section">
         <div class="jd-section-header">
-          <span class="jd-section-title">Token Terkirim</span>
+          <span class="jd-section-title">Token Aktif <span style="font-weight:400;font-size:11px;color:var(--text-3)">— subset dari Waitlist yang sudah punya token</span></span>
         </div>
         <div class="jd-scroll-hint">← Geser tabel untuk lihat kolom lainnya →</div>
         <div class="jd-table-wrap">
@@ -802,6 +817,49 @@
       var isOpen = body.style.display !== 'none';
       body.style.display = isOpen ? 'none' : 'block';
       chevron.classList.toggle('open', !isOpen);
+    }
+
+    var jdJastipLoaded = false;
+    function toggleJastipSection() {
+      var body = document.getElementById('jd-jastip-collapsible');
+      var chevron = document.getElementById('jd-jastip-chevron');
+      var isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      chevron.classList.toggle('open', !isOpen);
+      if (!isOpen && !jdJastipLoaded) { jdJastipLoaded = true; loadJastipSuspects(); }
+    }
+
+    // Referensi read-only: data jastip_suspects (sistem terpisah, jastip_detector).
+    // Link ke waitlist cuma lewat no. HP karena tabel ini gak nyimpen email.
+    async function loadJastipSuspects() {
+      var container = document.getElementById('jd-jastip-body');
+      container.innerHTML = '<div class="jd-loading">Memuat...</div>';
+
+      var result = await sbQuery('jastip_suspects?select=phone,known_names,known_products,confidence,total_appearances,last_seen_at&status=eq.confirmed&order=last_seen_at.desc');
+
+      if (!result.data || !result.data.length) {
+        container.innerHTML = '<div class="jd-empty">Belum ada suspect jastip terkonfirmasi.</div>';
+        return;
+      }
+
+      var html = '<div class="jd-table-wrap"><table class="jd-table-waitlist"><thead><tr>' +
+        '<th>No. HP</th><th>Nama yang tercatat</th><th>Produk yang pernah dibeli</th><th>Confidence</th><th>Terakhir terlihat</th>' +
+        '</tr></thead><tbody>';
+
+      result.data.forEach(function(row) {
+        var names = Array.isArray(row.known_names) ? row.known_names.join(', ') : (row.known_names || '—');
+        var products = row.known_products ? (Array.isArray(row.known_products) ? row.known_products.join(', ') : JSON.stringify(row.known_products)) : '—';
+        html += '<tr>' +
+          '<td>' + fmtPhone(row.phone) + '</td>' +
+          '<td style="color:var(--text-2)">' + names + '</td>' +
+          '<td style="color:var(--text-2)">' + products + '</td>' +
+          '<td><span class="badge badge-flag">' + (row.confidence || '—') + '</span></td>' +
+          '<td style="color:var(--text-3);white-space:nowrap">' + fmtDate(row.last_seen_at) + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
     }
 
     function switchTab(name) {
