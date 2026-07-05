@@ -1567,9 +1567,12 @@
         var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : expiringSoon ? 'Segera Expired' : 'Aktif';
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
 
+        // "Reset & kirim ulang" dihapus -- satu-satunya beda dari "Generate
+        // token baru" adalah dia pertahanin link lama, tapi karena dua-duanya
+        // sama-sama ngirim email baru, manfaat itu gak kepakai di praktiknya.
+        // "Generate baru" lebih aman (selalu refresh private_variation_id).
         var actionButtons =
-          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>' +
-          '<button onclick="tokenAction(\'reset\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Reset & kirim ulang</button>';
+          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>';
 
         // Token yang sudah dipakai (sudah ada order lunas di baliknya) dikunci di
         // production untuk mencegah reset tanpa sadar bikin slot yang sama terjual
