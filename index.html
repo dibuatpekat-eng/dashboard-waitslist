@@ -443,7 +443,7 @@
       }
       .jd-table-waitlist tr.jd-card-open td,
       .jd-table-tokens tr.jd-card-open td {
-        display: flex;
+        display: flex !important; /* harus menang lawan selector :not() di atas yang lebih spesifik */
       }
       .jd-card-collapse-hint { display: block !important; font-size: 9px; color: var(--text-3); text-align: right; padding: 2px 14px 0; }
       tr.jd-card-open .jd-card-collapse-hint::after { content: '▴ tutup'; }
