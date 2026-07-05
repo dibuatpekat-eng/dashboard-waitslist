@@ -142,14 +142,22 @@
   .empty .glyph { font-size: 26px; margin-bottom: 10px; opacity: .5; }
   .empty p { font-size: 13px; margin: 0; }
 
-  /* ---------- Suspects table ---------- */
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 12px 20px; border-bottom: 1px solid var(--line); background: #FCFBF9; }
-  td { padding: 13px 20px; border-bottom: 1px solid var(--line); font-size: 12.5px; vertical-align: top; line-height: 1.5; }
-  tr:last-child td { border-bottom: none; }
-  tbody tr:hover td { background: #FCFBF9; }
+  /* ---------- Suspects ---------- */
   .tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
   .tag { font-size: 11px; background: var(--paper); border-radius: 5px; padding: 2px 8px; }
+
+  .suspect-item { display: flex; gap: 18px; padding: 16px 22px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .suspect-item:last-child { border-bottom: none; }
+  .suspect-item:hover { background: #FCFBF9; }
+  .sp-status { flex-shrink: 0; width: 96px; padding-top: 1px; }
+  .sp-main { flex: 1; min-width: 0; }
+  .sp-phone { font-size: 14px; font-weight: 500; }
+  .sp-address { font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .sp-names { margin-top: 7px; }
+  .sp-notes { font-size: 12px; color: var(--ink); margin-top: 7px; font-style: italic; }
+  .sp-meta { flex-shrink: 0; width: 150px; font-size: 11.5px; color: var(--muted); text-align: right; line-height: 1.7; }
+  .sp-meta b { color: var(--ink); font-weight: 500; }
+  .sp-actions { flex-shrink: 0; padding-top: 1px; }
 
   /* ---------- Watched products ---------- */
   .watched-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--line); }
@@ -247,14 +255,12 @@
       <button class="btn btn-dark" onclick="openAddSuspect()">+ Tambah Manual</button>
     </div>
     <div class="toolbar">
-      <input class="input" style="width:280px" id="suspectSearch" placeholder="Cari HP atau alamat…" oninput="loadSuspects()">
+      <input class="input" style="width:280px" id="suspectSearch" placeholder="Cari HP, alamat, atau nama…" oninput="loadSuspects()">
+      <div class="spacer"></div>
+      <button class="chip active" data-s="active" onclick="setSuspectFilter('active', this)">Aktif</button>
+      <button class="chip" data-s="all" onclick="setSuspectFilter('all', this)">Semua (termasuk cleared)</button>
     </div>
-    <div class="card">
-      <table>
-        <thead><tr><th>No HP</th><th>Alamat</th><th>Nama Diketahui</th><th>Status</th><th>Muncul</th><th>Terakhir</th><th>Catatan</th><th></th></tr></thead>
-        <tbody id="suspectsBody"></tbody>
-      </table>
-    </div>
+    <div class="card" id="suspectsList"></div>
   </div>
 
   <!-- WATCHED PRODUCTS -->
@@ -526,33 +532,63 @@ async function doConfirmJastip() {
 // ============================================================
 // SUSPECTS
 // ============================================================
+const STATUS_LABEL = { confirmed: 'Confirmed', suspected: 'Dicurigai', watching: 'Watching', cleared: 'Cleared' };
+const STATUS_BADGE = { confirmed: 'high', suspected: 'medium', watching: 'low', cleared: 'low' };
+let suspectFilter = 'active';
+
+function setSuspectFilter(f, btn) {
+  suspectFilter = f;
+  document.querySelectorAll('.chip[data-s]').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  loadSuspects();
+}
+
 async function loadSuspects() {
   const q = document.getElementById('suspectSearch').value.trim();
-  let query = 'select=*&order=last_seen_at.desc.nullslast,created_at.desc&status=neq.cleared';
-  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*)`;
+  let query = 'select=*&order=last_seen_at.desc.nullslast,created_at.desc';
+  if (suspectFilter === 'active') query += '&status=neq.cleared';
+  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*,known_names.cs.{${q}})`;
   try {
     const suspects = await sb(`jastip_suspects?${query}`);
     renderSuspects(suspects || []);
-  } catch(e) { showToast('Gagal memuat: ' + e.message); }
+  } catch(e) {
+    document.getElementById('suspectsList').innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`;
+  }
 }
 
 function renderSuspects(suspects) {
-  const body = document.getElementById('suspectsBody');
+  const list = document.getElementById('suspectsList');
   if (suspects.length === 0) {
-    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="glyph">◌</div><p>Belum ada data.</p></div></td></tr>`;
+    list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Belum ada data.</p></div>`;
     return;
   }
-  body.innerHTML = suspects.map(s => `
-    <tr>
-      <td>${s.phone || '—'}</td>
-      <td style="max-width:200px">${s.address_raw || '—'}</td>
-      <td><div class="tag-list">${(s.known_names || []).map(n => `<span class="tag">${n}</span>`).join('') || '—'}</div></td>
-      <td><span class="badge ${s.status === 'confirmed' ? 'high' : s.status === 'suspected' ? 'medium' : 'low'}">${s.status}</span></td>
-      <td>${s.total_appearances ?? 1}</td>
-      <td>${s.last_seen_at ? new Date(s.last_seen_at).toLocaleDateString('id-ID') : '—'}</td>
-      <td style="max-width:160px">${s.notes || '—'}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="clearSuspect('${s.id}')">Clear</button></td>
-    </tr>`).join('');
+  list.innerHTML = suspects.map(s => `
+    <div class="suspect-item">
+      <div class="sp-status"><span class="badge ${STATUS_BADGE[s.status] || 'low'}">${STATUS_LABEL[s.status] || s.status}</span></div>
+      <div class="sp-main">
+        <div class="sp-phone">${esc(s.phone) || '(tanpa HP)'}</div>
+        <div class="sp-address">${esc(s.address_raw) || '(tanpa alamat)'}</div>
+        ${(s.known_names || []).length ? `<div class="sp-names tag-list">${s.known_names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>` : ''}
+        ${s.notes ? `<div class="sp-notes">${esc(s.notes)}</div>` : ''}
+      </div>
+      <div class="sp-meta">
+        <div><b>${s.total_appearances ?? 1}</b> kali muncul</div>
+        <div>Terakhir: ${s.last_seen_at ? new Date(s.last_seen_at).toLocaleDateString('id-ID') : '—'}</div>
+      </div>
+      <div class="sp-actions">
+        ${s.status !== 'cleared'
+          ? `<button class="btn btn-ghost btn-sm" onclick="clearSuspect('${s.id}')">Clear</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="reactivateSuspect('${s.id}')">Aktifkan lagi</button>`}
+      </div>
+    </div>`).join('');
+}
+
+async function reactivateSuspect(id) {
+  try {
+    await sb(`jastip_suspects?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'confirmed' }) });
+    loadSuspects();
+    showToast('Diaktifkan lagi');
+  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function clearSuspect(id) {
