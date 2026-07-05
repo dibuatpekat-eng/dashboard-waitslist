@@ -267,10 +267,18 @@
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
     .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
+    .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
     .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
     .jd-flag-detail { font-size: 10px; color: var(--text-3); line-height: 1.4; }
     .jd-stat { cursor: pointer; transition: background 0.15s; }
     .jd-stat:hover { background: var(--bg); }
+    /* Warna di tepi kiri baris = sinyal cepat "perlu dilihat" tanpa harus baca
+       teks — merah utk jastip, biru utk pernah beli produk lain. Teks badge
+       tetap generik ("Perlu Ditinjau") biar gak nambah kosakata status baru;
+       warna ini yang kasih tau alasannya. */
+    .jd-table-waitlist tr { border-left: 3px solid transparent; }
+    .jd-table-waitlist tr.jd-row-jastip { border-left-color: var(--flag); }
+    .jd-table-waitlist tr.jd-row-bought { border-left-color: var(--bought); }
     /* ── TOKEN ACTION DROPDOWN ── */
     .jd-token-action { position: relative; display: inline-block; }
     .jd-token-action-btn {
@@ -448,6 +456,11 @@
       .jd-card-collapse-hint { display: block !important; font-size: 9px; color: var(--text-3); text-align: right; padding: 2px 14px 0; }
       tr.jd-card-open .jd-card-collapse-hint::after { content: '▴ tutup'; }
       tr:not(.jd-card-open) .jd-card-collapse-hint::after { content: '▾ detail'; }
+
+      /* Dropdown "Kelola" ngembang ke KIRI dari tombolnya (right:0). Di kartu
+         mobile tombolnya nempel di kiri layar, jadi dropdown-nya kepotong ke
+         luar layar. Di mobile, buka ke kanan (left:0) dan penuhi lebar kartu. */
+      .jd-token-dropdown { left: 0; right: auto; min-width: 0; width: calc(100vw - 60px); max-width: 280px; }
     }
 
     /* ── SORTABLE COLUMNS ── */
@@ -500,8 +513,8 @@
           <div class="jd-stat-label">Total Pendaftar</div>
           <div class="jd-stat-value" id="jd-stat-total">—</div>
         </div>
-        <div class="jd-stat" onclick="filterByStat('clean')" title="Lihat pendaftar bersih (belum diproses)">
-          <div class="jd-stat-label">Bersih (Eligible)</div>
+        <div class="jd-stat" onclick="filterByStat('clean')" title="Lihat pendaftar yang eligible (belum diproses, gak ada flag)">
+          <div class="jd-stat-label">Eligible</div>
           <div class="jd-stat-value ok" id="jd-stat-clean">—</div>
         </div>
         <div class="jd-stat" onclick="filterByStat('flagged')" title="Lihat pendaftar yang keflag jastip">
@@ -593,7 +606,7 @@
             </select>
             <select id="jd-filter-flag" onchange="loadWaitlist(1)">
               <option value="">Semua</option>
-              <option value="clean">Bersih</option>
+              <option value="clean">Eligible</option>
               <option value="flagged">Jastip</option>
               <option value="bought">Pernah Beli</option>
             </select>
@@ -1272,22 +1285,28 @@
         // badge-nya ITU flag-nya -- karena gunanya buat mutusin siapa yang boleh
         // dikirim. Begitu sudah diproses (invited/purchased/expired), keputusan
         // udah diambil, jadi tampilin tahapnya aja tanpa flag lama yang gak
-        // relevan lagi.
+        // relevan lagi. Alasan spesifik (jastip vs pernah beli) dikasih tau
+        // lewat warna di tepi kiri baris + catatan kecil, bukan lewat nama
+        // badge baru -- biar kosakata status tetap sedikit dan gampang discan.
+        var rowAccentClass = '';
         var statusHtml;
         if (row.status === 'pending') {
           if (row.is_flagged) {
-            statusHtml = '<span class="badge badge-flag">Jastip</span>';
+            rowAccentClass = 'jd-row-jastip';
+            statusHtml = '<span class="badge badge-review">Perlu Ditinjau</span>' +
+              '<span class="jd-flag-detail">Terindikasi jastip</span>';
           } else if (row.already_purchased) {
-            statusHtml = '<span class="badge badge-bought">Pernah Beli</span>' +
-              '<span class="jd-flag-detail">' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
+            rowAccentClass = 'jd-row-bought';
+            statusHtml = '<span class="badge badge-review">Perlu Ditinjau</span>' +
+              '<span class="jd-flag-detail">Pernah beli: ' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
           } else {
-            statusHtml = '<span class="badge badge-ok">Bersih</span>';
+            statusHtml = '<span class="badge badge-ok">Eligible</span>';
           }
         } else {
           statusHtml = '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>';
         }
 
-        return '<tr style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
+        return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label=""><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
           '<td data-label="Email">' + (row.email || '—') + '</td>' +
