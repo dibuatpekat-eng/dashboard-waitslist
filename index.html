@@ -1266,12 +1266,27 @@
 
       tbody.innerHTML = result.data.map(function(row, i) {
         var eligible = (!row.is_flagged && !row.already_purchased && row.status === 'pending') ? '1' : '0';
-        // Kalau status baris ini SENDIRI udah "purchased", flag "sudah beli" pasti
-        // ikut nyala juga (match ke pembelian yg sama) -- itu bukan info baru, cuma
-        // gaung. Flag ini baru berguna buat entry yang BUKAN hasil pembelian dia
-        // sendiri (misal: daftar lagi padahal dulu udah pernah beli produk ini).
-        var showBoughtFlag = row.already_purchased && row.status !== 'purchased';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
+
+        // Satu badge aja, bukan tumpuk. Selama masih "pending" (belum diproses),
+        // badge-nya ITU flag-nya -- karena gunanya buat mutusin siapa yang boleh
+        // dikirim. Begitu sudah diproses (invited/purchased/expired), keputusan
+        // udah diambil, jadi tampilin tahapnya aja tanpa flag lama yang gak
+        // relevan lagi.
+        var statusHtml;
+        if (row.status === 'pending') {
+          if (row.is_flagged) {
+            statusHtml = '<span class="badge badge-flag">Jastip</span>';
+          } else if (row.already_purchased) {
+            statusHtml = '<span class="badge badge-bought">Pernah Beli</span>' +
+              '<span class="jd-flag-detail">' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
+          } else {
+            statusHtml = '<span class="badge badge-ok">Bersih</span>';
+          }
+        } else {
+          statusHtml = '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>';
+        }
+
         return '<tr style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label=""><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
@@ -1280,12 +1295,7 @@
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Warna/Ukuran" style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
           '<td data-label="Daftar" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
-          '<td data-label="Status"><div class="jd-flag-cell">' +
-          '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>' +
-          (row.is_flagged ? '<span class="badge badge-flag">Jastip</span>' : '') +
-          (showBoughtFlag ? '<span class="badge badge-bought">Pernah Beli</span><span class="jd-flag-detail">' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>' : '') +
-          (!row.is_flagged && !showBoughtFlag && row.status !== 'purchased' ? '<span class="badge badge-ok">Bersih</span>' : '') +
-          '</div></td>' +
+          '<td data-label="Status"><div class="jd-flag-cell">' + statusHtml + '</div></td>' +
           '<td data-label="" class="jd-card-collapse-hint"></td>' +
           '</tr>';
       }).join('');
