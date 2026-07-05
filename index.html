@@ -795,6 +795,28 @@
     </div>
   </div>
 
+  <!-- MODAL: EDIT ENTRY -->
+  <div class="jd-modal-overlay" id="jd-modal-edit">
+    <div class="jd-modal">
+      <div class="jd-modal-title">Edit Entry</div>
+      <div class="jd-modal-body">
+        <div class="jd-form-group" style="margin-bottom:14px">
+          <div class="jd-form-label">Email</div>
+          <input type="email" id="jd-edit-email" class="jd-alloc-input">
+        </div>
+        <div class="jd-form-group">
+          <div class="jd-form-label">No. HP</div>
+          <input type="text" id="jd-edit-phone" class="jd-alloc-input">
+        </div>
+        <div id="jd-edit-error" style="display:none;margin-top:12px;font-size:12px;color:var(--flag)"></div>
+      </div>
+      <div class="jd-modal-actions">
+        <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-edit')">Batal</button>
+        <button class="jd-btn jd-btn-dark" onclick="saveEditEntry()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div class="jd-toast" id="jd-toast"></div>
 
@@ -1385,7 +1407,9 @@
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
-          '<td data-label="Email">' + (row.email || '—') + '</td>' +
+          '<td data-label="Email">' + (row.email || '—') +
+          ' <button class="jd-btn jd-btn-outline" style="font-size:9px;padding:2px 6px;margin-left:6px" onclick="event.stopPropagation(); openEditModal(\'' + row.id + '\', \'' + (row.email || '').replace(/'/g, "\\'") + '\', \'' + (row.phone || '').replace(/'/g, "\\'") + '\')">Edit</button>' +
+          '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Warna/Ukuran" style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
@@ -1408,6 +1432,54 @@
       selectedRows = {};
       selectedRows[btn.dataset.id] = row;
       generateSelected();
+    }
+
+    // ── EDIT ENTRY (email/no. HP salah input) ────────────────
+    // launch_waitlist.email dan .phone punya UNIQUE constraint di database,
+    // jadi kalau hasil edit bentrok sama entry lain, Postgres yang otomatis
+    // nolak (23505) -- di sini cuma perlu nangkep errornya dan kasih pesan
+    // yang jelas, bukan biarin error mentah muncul.
+    var jdEditingId = null;
+    function openEditModal(id, email, phone) {
+      jdEditingId = id;
+      document.getElementById('jd-edit-email').value = email || '';
+      document.getElementById('jd-edit-phone').value = phone || '';
+      document.getElementById('jd-edit-error').style.display = 'none';
+      openModal('jd-modal-edit');
+    }
+
+    async function saveEditEntry() {
+      var email = document.getElementById('jd-edit-email').value.trim();
+      var phone = document.getElementById('jd-edit-phone').value.trim();
+      var errBox = document.getElementById('jd-edit-error');
+      errBox.style.display = 'none';
+
+      var res = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + jdEditingId, {
+        method: 'PATCH',
+        headers: authHeaders({ 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ email: email, phone: phone })
+      });
+
+      if (res.status === 409 || res.status === 400) {
+        var body = await res.json().catch(function(){ return {}; });
+        var dup = (body.message || '').toLowerCase();
+        errBox.textContent = dup.indexOf('email') !== -1
+          ? 'Email ini sudah dipakai entry lain.'
+          : dup.indexOf('phone') !== -1
+          ? 'No. HP ini sudah dipakai entry lain.'
+          : 'Gagal simpan: ' + (body.message || 'data bentrok dengan entry lain.');
+        errBox.style.display = 'block';
+        return;
+      }
+      if (!res.ok) {
+        errBox.textContent = 'Gagal simpan (status ' + res.status + ').';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      closeModal('jd-modal-edit');
+      showToast('Entry berhasil diupdate.');
+      loadWaitlist(currentPage);
     }
 
     // ── GENERATE SELECTED ────────────────────────────────────
