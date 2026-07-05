@@ -15,7 +15,7 @@
       --flag: #C0392B; --flag-bg: #FDF2F1; --flag-border: #F5C6C2;
       --ok: #1A6B3C; --ok-bg: #F0FAF4; --ok-border: #A8DFC0;
       --warn: #7D5A00; --warn-bg: #FDF8EC; --warn-border: #EDD98A;
-      --bought: #1D4E89; --bought-bg: #EEF4FB; --bought-border: #BBD3EC;
+      --bought: #B15400; --bought-bg: #FDF1E4; --bought-border: #F0C393;
     }
 
     body {
@@ -462,8 +462,14 @@
 
       /* Batch/bulk-select cuma dipakai di desktop -- di HP operator generate
          satu-satu lewat tombol per-baris, jadi checkbox cuma bikin bingung
-         ("kok ada yang bisa dicentang, ada yang enggak"). Sembunyikan total. */
-      .jd-checkbox-cell { display: none !important; }
+         ("kok ada yang bisa dicentang, ada yang enggak"). Sembunyikan total --
+         termasuk pas kartu di-expand (".jd-card-open td" punya specificity
+         lebih tinggi dari cuma ".jd-checkbox-cell", makanya checkbox balik
+         muncul kalau gak ditulis lebih spesifik lagi di sini). */
+      .jd-table-waitlist tr.jd-card-open td.jd-checkbox-cell,
+      .jd-checkbox-cell {
+        display: none !important;
+      }
 
       /* Dropdown "Kelola" ngembang ke KIRI dari tombolnya (right:0). Di kartu
          mobile tombolnya nempel di kiri layar, jadi dropdown-nya kepotong ke
@@ -529,8 +535,8 @@
           <div class="jd-stat-label">Perlu Ditinjau</div>
           <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
         </div>
-        <div class="jd-stat" onclick="filterByStat('invited')" title="Lihat pendaftar yang sudah dikirimi undangan">
-          <div class="jd-stat-label">Undangan Terkirim</div>
+        <div class="jd-stat" onclick="filterByStat('invited')" title="Lihat semua yang pernah dikirimi undangan (aktif, sudah beli, atau expired)">
+          <div class="jd-stat-label">Total Diundang</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
           <div style="font-size:10px;color:var(--text-3);margin-top:4px" id="jd-stat-conversion"></div>
         </div>
@@ -606,7 +612,7 @@
         <div class="jd-section-header">
           <span class="jd-section-title">Waitlist</span>
           <div class="jd-controls">
-            <input type="text" id="jd-search-input" placeholder="Cari email / no. HP..." onkeydown="if(event.key==='Enter'){loadWaitlist(1);}" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:180px">
+            <input type="text" id="jd-search-input" placeholder="Cari email / no. HP..." oninput="jdSearchDebounced()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:180px">
             <!-- Dimensi "orang ini apa" (eligible/perlu ditinjau) sudah dicover kartu
                  ringkasan di atas — dropdown ini cuma sisa dimensi "tahap proses"
                  yang gak ada kartunya (Sudah Beli, Expired). -->
@@ -1043,11 +1049,19 @@
       cardFlagFilter = '';
       if (which === 'clean')        { cardFlagFilter = 'clean'; statusSel.value = 'pending'; }
       else if (which === 'review')  { cardFlagFilter = 'review'; }
-      else if (which === 'invited') { statusSel.value = 'invited'; }
+      else if (which === 'invited') { cardFlagFilter = 'eversent'; }
       // 'total' -> semua filter dikosongkan (sudah di atas)
       loadWaitlist(1);
       var section = document.getElementById('jd-tab-panel-waitlist');
       if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Search jalan live sambil ngetik (termasuk pas dihapus balik ke kosong),
+    // bukan cuma waktu pencet Enter -- itu bukan pola standar buat search box.
+    var jdSearchTimer = null;
+    function jdSearchDebounced() {
+      clearTimeout(jdSearchTimer);
+      jdSearchTimer = setTimeout(function() { loadWaitlist(1); }, 300);
     }
 
     // Dipanggil dari baris Token Aktif -- lompat ke Waitlist dan cari entry yg
@@ -1203,10 +1217,12 @@
         sbQuery('launch_waitlist_view?select=id'),
         sbQuery('launch_waitlist_view?select=id&status=eq.pending&is_flagged=eq.false&already_purchased=eq.false'),
         sbQuery('launch_waitlist_view?select=id&or=(is_flagged.eq.true,already_purchased.eq.true)'),
-        sbQuery('launch_waitlist_view?select=id&status=eq.invited'),
-        // "Undangan Terkirim" doang gak jawab pertanyaan "dari yang diundang,
-        // berapa yang BENERAN checkout" -- makanya ditambah rasio konversi
-        // (dari semua yang pernah dapat token: invited/purchased/expired).
+        // BUG YANG DIPERBAIKI: sebelumnya cuma hitung status=invited persis,
+        // padahal begitu orang checkout, status-nya PINDAH ke "purchased" --
+        // jadi orang yang justru paling berhasil (checkout) malah gak
+        // dihitung sebagai "pernah diundang". "Undangan Terkirim" harus
+        // mencakup siapapun yang PERNAH dikirimi token, apapun status
+        // dia SEKARANG (masih invited, sudah purchased, atau sudah expired).
         sbQuery('launch_waitlist_view?select=id&status=in.(invited,purchased,expired)'),
         sbQuery('launch_waitlist_view?select=id&status=eq.purchased')
       ]);
@@ -1214,8 +1230,8 @@
       document.getElementById('jd-stat-clean').textContent   = r[1].count != null ? r[1].count : '—';
       document.getElementById('jd-stat-flagged').textContent = r[2].count != null ? r[2].count : '—';
       document.getElementById('jd-stat-invited').textContent = r[3].count != null ? r[3].count : '—';
-      var everSent  = r[4].count || 0;
-      var purchased = r[5].count || 0;
+      var everSent  = r[3].count || 0;
+      var purchased = r[4].count || 0;
       document.getElementById('jd-stat-conversion').textContent =
         everSent > 0 ? purchased + '/' + everSent + ' checkout' : '';
     }
@@ -1282,8 +1298,9 @@
       var search = document.getElementById('jd-search-input').value.trim();
       var q  = 'launch_waitlist_view?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
       if (sf) q += '&status=eq.' + sf;
-      if (cardFlagFilter === 'clean')  q += '&is_flagged=eq.false&already_purchased=eq.false';
-      if (cardFlagFilter === 'review') q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
+      if (cardFlagFilter === 'clean')    q += '&is_flagged=eq.false&already_purchased=eq.false';
+      if (cardFlagFilter === 'review')   q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
+      if (cardFlagFilter === 'eversent') q += '&status=in.(invited,purchased,expired)';
       if (search) {
         var esc = search.replace(/[(),]/g, '');
         var digits = esc.replace(/[^0-9]/g, '');
