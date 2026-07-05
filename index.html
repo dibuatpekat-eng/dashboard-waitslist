@@ -517,8 +517,8 @@
           <div class="jd-stat-label">Eligible</div>
           <div class="jd-stat-value ok" id="jd-stat-clean">—</div>
         </div>
-        <div class="jd-stat" onclick="filterByStat('flagged')" title="Lihat pendaftar yang keflag jastip">
-          <div class="jd-stat-label">Flagged Jastip</div>
+        <div class="jd-stat" onclick="filterByStat('review')" title="Lihat pendaftar yang perlu ditinjau (jastip atau pernah beli)">
+          <div class="jd-stat-label">Perlu Ditinjau</div>
           <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
         </div>
         <div class="jd-stat" onclick="filterByStat('invited')" title="Lihat pendaftar yang sudah dikirimi undangan">
@@ -597,18 +597,16 @@
         <div class="jd-section-header">
           <span class="jd-section-title">Waitlist</span>
           <div class="jd-controls">
-            <select id="jd-filter-status" onchange="loadWaitlist(1)">
-              <option value="">Semua Status</option>
-              <option value="pending">Pending</option>
+            <input type="text" id="jd-search-input" placeholder="Cari email / no. HP..." onkeydown="if(event.key==='Enter'){loadWaitlist(1);}" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:180px">
+            <!-- Dimensi "orang ini apa" (eligible/perlu ditinjau) sudah dicover kartu
+                 ringkasan di atas — dropdown ini cuma sisa dimensi "tahap proses"
+                 yang gak ada kartunya (Sudah Beli, Expired). -->
+            <select id="jd-filter-status" onchange="cardFlagFilter=''; loadWaitlist(1)">
+              <option value="">Semua Tahap</option>
+              <option value="pending">Belum Diproses</option>
               <option value="invited">Undangan Terkirim</option>
               <option value="purchased">Sudah Beli</option>
               <option value="expired">Expired</option>
-            </select>
-            <select id="jd-filter-flag" onchange="loadWaitlist(1)">
-              <option value="">Semua</option>
-              <option value="clean">Eligible</option>
-              <option value="flagged">Jastip</option>
-              <option value="bought">Pernah Beli</option>
             </select>
             <select id="jd-sort-select" onchange="jdSetWaitlistSortFromSelect(this.value)">
               <option value="registered_at:desc">Urutkan: Terbaru daftar</option>
@@ -801,6 +799,9 @@
     // Both tables default to newest-first so behavior is consistent between tabs.
     var waitlistSort = { col: 'registered_at', dir: 'desc' };
     var tokenSort    = { col: 'created_at', dir: 'desc' };
+    // Diisi cuma lewat klik kartu ringkasan (Eligible / Perlu Ditinjau) -- gak
+    // ada dropdown terpisah buat ini, biar gak dobel sama dropdown status.
+    var cardFlagFilter = '';
     var STATUS_LABELS = { pending: 'Pending', invited: 'Undangan Terkirim', purchased: 'Sudah Beli', expired: 'Expired' };
 
     function setWaitlistSort(col) {
@@ -1027,13 +1028,26 @@
     function filterByStat(which) {
       switchTab('waitlist');
       var statusSel = document.getElementById('jd-filter-status');
-      var flagSel   = document.getElementById('jd-filter-flag');
+      var searchInput = document.getElementById('jd-search-input');
       statusSel.value = '';
-      flagSel.value   = '';
-      if (which === 'clean')        { flagSel.value = 'clean'; statusSel.value = 'pending'; }
-      else if (which === 'flagged') { flagSel.value = 'flagged'; }
+      searchInput.value = '';
+      cardFlagFilter = '';
+      if (which === 'clean')        { cardFlagFilter = 'clean'; statusSel.value = 'pending'; }
+      else if (which === 'review')  { cardFlagFilter = 'review'; }
       else if (which === 'invited') { statusSel.value = 'invited'; }
       // 'total' -> semua filter dikosongkan (sudah di atas)
+      loadWaitlist(1);
+      var section = document.getElementById('jd-tab-panel-waitlist');
+      if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Dipanggil dari baris Token Aktif -- lompat ke Waitlist dan cari entry yg
+    // sama, biar operator gak bingung "token ini punya siapa di waitlist".
+    function jdViewInWaitlist(email) {
+      switchTab('waitlist');
+      document.getElementById('jd-filter-status').value = '';
+      cardFlagFilter = '';
+      document.getElementById('jd-search-input').value = email;
       loadWaitlist(1);
       var section = document.getElementById('jd-tab-panel-waitlist');
       if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1178,8 +1192,8 @@
     async function loadStats() {
       var r = await Promise.all([
         sbQuery('launch_waitlist_view?select=id'),
-        sbQuery('launch_waitlist_view?select=id&is_flagged=eq.false&already_purchased=eq.false'),
-        sbQuery('launch_waitlist_view?select=id&is_flagged=eq.true'),
+        sbQuery('launch_waitlist_view?select=id&status=eq.pending&is_flagged=eq.false&already_purchased=eq.false'),
+        sbQuery('launch_waitlist_view?select=id&or=(is_flagged.eq.true,already_purchased.eq.true)'),
         sbQuery('launch_waitlist_view?select=id&status=eq.invited')
       ]);
       document.getElementById('jd-stat-total').textContent   = r[0].count != null ? r[0].count : '—';
@@ -1247,12 +1261,15 @@
       renderSortIndicators('jd-sort-ind-', waitlistSort, ['email', 'registered_at', 'status']);
 
       var sf = document.getElementById('jd-filter-status').value;
-      var ff = document.getElementById('jd-filter-flag').value;
+      var search = document.getElementById('jd-search-input').value.trim();
       var q  = 'launch_waitlist_view?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
       if (sf) q += '&status=eq.' + sf;
-      if (ff === 'clean')   q += '&is_flagged=eq.false&already_purchased=eq.false';
-      if (ff === 'flagged') q += '&is_flagged=eq.true';
-      if (ff === 'bought')  q += '&already_purchased=eq.true';
+      if (cardFlagFilter === 'clean')  q += '&is_flagged=eq.false&already_purchased=eq.false';
+      if (cardFlagFilter === 'review') q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
+      if (search) {
+        var esc = search.replace(/[(),]/g, '');
+        q += '&or=(email.ilike.*' + encodeURIComponent(esc) + '*,phone.ilike.*' + encodeURIComponent(esc.replace(/[^0-9]/g, '')) + '*)';
+      }
 
       var from = (page - 1) * PAGE_SIZE;
       var to   = from + PAGE_SIZE - 1;
@@ -1306,15 +1323,28 @@
           statusHtml = '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>';
         }
 
+        // Checkbox yang disabled tanpa alasan bikin operator bingung "kok gak
+        // bisa dicentang". Kasih tau kenapa lewat title (tooltip).
+        var disabledReason = row.is_flagged ? 'Perlu ditinjau dulu (jastip)'
+          : row.already_purchased ? 'Perlu ditinjau dulu (pernah beli produk lain)'
+          : row.status !== 'pending' ? 'Sudah diproses (' + (STATUS_LABELS[row.status] || row.status) + ')'
+          : '';
+
+        // Aksi per-baris: generate token 1 orang tanpa harus centang + scroll
+        // ke atas ke tombol bulk -- bulk-select tetap ada, ini cuma jalan pintas.
+        var generateBtn = eligible === '1'
+          ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:4px 10px;margin-top:4px" data-id="' + row.id + '" data-row="' + rowJson + '" onclick="event.stopPropagation(); jdGenerateSingle(this)">Generate Token</button>'
+          : '';
+
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
-          '<td data-label=""><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
+          '<td data-label=""><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
           '<td data-label="Email">' + (row.email || '—') + '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Warna/Ukuran" style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
           '<td data-label="Daftar" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
-          '<td data-label="Status"><div class="jd-flag-cell">' + statusHtml + '</div></td>' +
+          '<td data-label="Status"><div class="jd-flag-cell">' + statusHtml + generateBtn + '</div></td>' +
           '<td data-label="" class="jd-card-collapse-hint"></td>' +
           '</tr>';
       }).join('');
@@ -1323,6 +1353,16 @@
     }
 
     function changePage(dir) { loadWaitlist(currentPage + dir); }
+
+    // Aksi cepat per-baris -- pakai ulang alur bulk-generate yang sudah ada
+    // (modal konfirmasi, lookup variation, dst), cuma isinya 1 orang doang,
+    // biar operator gak perlu scroll ke atas buat generate satu token aja.
+    function jdGenerateSingle(btn) {
+      var row = JSON.parse(btn.dataset.row);
+      selectedRows = {};
+      selectedRows[btn.dataset.id] = row;
+      generateSelected();
+    }
 
     // ── GENERATE SELECTED ────────────────────────────────────
     async function generateSelected() {
@@ -1390,8 +1430,10 @@
       var countActive = 0, countUsed = 0, countExpired = 0;
       tbody.innerHTML = result.data.map(function(row) {
         var expired = new Date(row.expires_at) < new Date();
-        var status  = row.is_used ? 'purchased' : expired ? 'expired' : 'invited';
-        var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : 'Aktif';
+        var hoursLeft = (new Date(row.expires_at) - new Date()) / 3600000;
+        var expiringSoon = !row.is_used && !expired && hoursLeft <= 6;
+        var status  = row.is_used ? 'purchased' : expired ? 'expired' : expiringSoon ? 'review' : 'invited';
+        var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : expiringSoon ? 'Segera Expired' : 'Aktif';
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
 
         var actionButtons =
@@ -1407,7 +1449,7 @@
 
         return '<tr onclick="jdToggleCard(event, this)">' +
           '<td data-label="Token"><code style="font-size:11px;letter-spacing:.04em">' + row.token + '</code></td>' +
-          '<td data-label="Email">' + (row.email || '—') + '</td>' +
+          '<td data-label="Email">' + (row.email ? '<a href="javascript:void(0)" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + row.email.replace(/'/g, "\\'") + '\')" style="color:var(--text);text-decoration:underline;text-underline-offset:2px" title="Lihat entry ini di tab Waitlist">' + row.email + '</a>' : '—') + '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Dibuat" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
