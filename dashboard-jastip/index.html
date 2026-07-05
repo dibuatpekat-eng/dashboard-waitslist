@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jedda — Jastip Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #171512;
+    --paper: #FAF8F5;
+    --card: #ffffff;
+    --line: #EAE5DD;
+    --muted: #8A8378;
+    --accent: #171512;
+    --red: #B3382C;
+    --red-bg: #FBEDEA;
+    --orange: #B4620C;
+    --orange-bg: #FCF1E3;
+    --yellow: #8A7015;
+    --yellow-bg: #FBF6E3;
+    --green: #2F6F4E;
+    --green-bg: #EAF5EF;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Jost', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+
+  /* ---------- Shell ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; height: 60px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .name { font-size: 15px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; }
+  .brand .sub { font-size: 12px; color: var(--muted); }
+  .nav { display: flex; gap: 4px; }
+  .nav button {
+    background: none; border: none; cursor: pointer;
+    font-family: 'Jost', sans-serif; font-size: 13px; color: var(--muted);
+    padding: 10px 16px; border-radius: 8px; transition: .15s;
+  }
+  .nav button:hover { color: var(--ink); background: var(--paper); }
+  .nav button.active { color: var(--ink); background: #F0EBE3; font-weight: 500; }
+
+  .shell { max-width: 1180px; margin: 0 auto; padding: 32px 28px 80px; }
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
+
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; flex-wrap: wrap; gap: 14px; }
+  .page-title { font-size: 22px; font-weight: 500; margin: 0 0 4px; }
+  .page-desc { font-size: 13px; color: var(--muted); margin: 0; max-width: 560px; line-height: 1.5; }
+
+  /* ---------- Stat cards ---------- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .stat .n { font-size: 26px; font-weight: 500; line-height: 1.1; }
+  .stat .l { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+  .stat.hi .n { color: var(--red); }
+  .stat.med .n { color: var(--orange); }
+  .stat.lo .n { color: var(--yellow); }
+
+  /* ---------- Controls ---------- */
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    padding: 7px 15px; border-radius: 999px; font-size: 12.5px; cursor: pointer; transition: .15s;
+    font-family: 'Jost', sans-serif;
+  }
+  .chip:hover { border-color: var(--ink); color: var(--ink); }
+  .chip.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .spacer { flex: 1; }
+  .input {
+    border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+    padding: 8px 14px; font-family: 'Jost', sans-serif; font-size: 13px; outline: none;
+    transition: border-color .15s;
+  }
+  .input:focus { border-color: var(--ink); }
+  .btn {
+    border: none; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 12.5px;
+    padding: 9px 18px; border-radius: 8px; transition: .15s; letter-spacing: .02em;
+  }
+  .btn-dark { background: var(--ink); color: #fff; }
+  .btn-dark:hover { opacity: .82; }
+  .btn-ghost { background: none; border: 1px solid var(--line); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--ink); }
+  .btn-danger-ghost { background: none; border: 1px solid var(--line); color: var(--red); }
+  .btn-danger-ghost:hover { border-color: var(--red); background: var(--red-bg); }
+  .btn-sm { padding: 6px 12px; font-size: 11.5px; }
+
+  /* ---------- Cards / list ---------- */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .flag-item {
+    display: grid; grid-template-columns: 1.1fr 1.3fr 1.6fr .9fr auto;
+    gap: 18px; align-items: center;
+    padding: 16px 22px; border-bottom: 1px solid var(--line);
+  }
+  .flag-item:last-child { border-bottom: none; }
+  .flag-item:hover { background: #FCFBF9; }
+  .f-order { font-size: 13px; font-weight: 500; }
+  .f-order .sub { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  .f-contact .name { font-size: 13px; }
+  .f-contact .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .f-detail { font-size: 12px; color: var(--ink); line-height: 1.5; }
+  .f-detail .rule { display: inline-block; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--paper); border-radius: 5px; padding: 2px 7px; margin-bottom: 5px; }
+  .badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 500; white-space: nowrap; }
+  .badge.high { background: var(--red-bg); color: var(--red); }
+  .badge.medium { background: var(--orange-bg); color: var(--orange); }
+  .badge.low { background: var(--yellow-bg); color: var(--yellow); }
+  .actions { display: flex; gap: 6px; }
+
+  .empty { text-align: center; padding: 70px 24px; color: var(--muted); }
+  .empty .glyph { font-size: 26px; margin-bottom: 10px; opacity: .5; }
+  .empty p { font-size: 13px; margin: 0; }
+
+  /* ---------- Suspects table ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 12px 20px; border-bottom: 1px solid var(--line); background: #FCFBF9; }
+  td { padding: 13px 20px; border-bottom: 1px solid var(--line); font-size: 12.5px; vertical-align: top; line-height: 1.5; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: #FCFBF9; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 11px; background: var(--paper); border-radius: 5px; padding: 2px 8px; }
+
+  /* ---------- Watched products ---------- */
+  .watched-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  .watched-row:last-child { border-bottom: none; }
+  .watched-row .kw { font-size: 13.5px; }
+  .watched-row .note { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .switch { position: relative; width: 38px; height: 22px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: var(--line); border-radius: 22px; cursor: pointer; transition: .2s; }
+  .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .slider { background: var(--ink); }
+  input:checked + .slider:before { transform: translateX(16px); }
+  .add-row { display: flex; gap: 10px; padding: 16px 22px; background: #FCFBF9; }
+  .add-row .input { flex: 1; }
+
+  /* ---------- Modal ---------- */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(23,21,18,.42); z-index: 200; align-items: center; justify-content: center; padding: 20px; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; width: 460px; max-width: 100%; border-radius: 14px; overflow: hidden; }
+  .modal-head { padding: 20px 22px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  .modal-head h3 { font-size: 14px; font-weight: 500; margin: 0; letter-spacing: .02em; }
+  .modal-close { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; line-height: 1; }
+  .modal-body { padding: 20px 22px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field .value { font-size: 13px; line-height: 1.5; }
+  .check-row { display: flex; align-items: flex-start; gap: 9px; padding: 8px 0; cursor: pointer; }
+  .check-row input { margin-top: 3px; }
+  .field textarea, .field input[type=text] {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+    font-family: 'Jost', sans-serif; font-size: 13px; outline: none; resize: vertical;
+  }
+  .field textarea:focus, .field input:focus { border-color: var(--ink); }
+  .modal-foot { padding: 16px 22px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ---------- Toast ---------- */
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--ink); color: #fff; padding: 11px 22px; border-radius: 999px; font-size: 12.5px; z-index: 300; opacity: 0; transition: .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .flag-item { grid-template-columns: 1fr; gap: 8px; }
+    .nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="name">Jedda</span><span class="sub">Jastip Dashboard</span></div>
+  <div class="nav">
+    <button class="active" data-page="flags" onclick="goPage('flags', this)">Flags</button>
+    <button data-page="suspects" onclick="goPage('suspects', this)">Database Jastip</button>
+    <button data-page="watched" onclick="goPage('watched', this)">Watched Products</button>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- FLAGS -->
+  <div class="page active" id="page-flags">
+    <div class="page-head">
+      <div>
+        <p class="page-title">Order yang perlu direview</p>
+        <p class="page-desc">Order dari seluruh toko yang otomatis ke-flag sistem — HP/alamat cocok database, borongan produk sama, atau repeat-purchase produk sama dari alamat/HP lain.</p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="statTotal">–</div><div class="l">Perlu Direview</div></div>
+      <div class="stat hi"><div class="n" id="statHigh">–</div><div class="l">High</div></div>
+      <div class="stat med"><div class="n" id="statMedium">–</div><div class="l">Medium</div></div>
+      <div class="stat lo"><div class="n" id="statLow">–</div><div class="l">Low</div></div>
+    </div>
+
+    <div class="toolbar">
+      <button class="chip active" data-f="all" onclick="setFlagFilter('all', this)">Semua</button>
+      <button class="chip" data-f="high" onclick="setFlagFilter('high', this)">High</button>
+      <button class="chip" data-f="medium" onclick="setFlagFilter('medium', this)">Medium</button>
+      <button class="chip" data-f="low" onclick="setFlagFilter('low', this)">Low</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="loadFlags()">↻ Refresh</button>
+    </div>
+
+    <div class="card" id="flagsList"></div>
+  </div>
+
+  <!-- SUSPECTS -->
+  <div class="page" id="page-suspects">
+    <div class="page-head">
+      <div>
+        <p class="page-title">Database Jastip</p>
+        <p class="page-desc">Daftar HP/alamat yang sudah dikonfirmasi atau dicurigai jastip. Order baru dari kontak ini otomatis kena flag "high confidence".</p>
+      </div>
+      <button class="btn btn-dark" onclick="openAddSuspect()">+ Tambah Manual</button>
+    </div>
+    <div class="toolbar">
+      <input class="input" style="width:280px" id="suspectSearch" placeholder="Cari HP atau alamat…" oninput="loadSuspects()">
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>No HP</th><th>Alamat</th><th>Nama Diketahui</th><th>Status</th><th>Muncul</th><th>Terakhir</th><th>Catatan</th><th></th></tr></thead>
+        <tbody id="suspectsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- WATCHED PRODUCTS -->
+  <div class="page" id="page-watched">
+    <div class="page-head">
+      <div>
+        <p class="page-title">Watched Products</p>
+        <p class="page-desc">Produk limited/eksklusif yang dipantau. Sistem cuma bandingkan repeat-purchase untuk produk yang sama persis di list ini — nama produk, bukan kategori.</p>
+      </div>
+    </div>
+    <div class="card" id="watchedList"></div>
+    <div class="card" style="margin-top:12px;">
+      <div class="add-row">
+        <input class="input" id="newKeyword" placeholder="Nama produk (contoh: The Classic Coat)">
+        <input class="input" id="newKeywordNote" placeholder="Catatan (opsional)">
+        <button class="btn btn-dark" onclick="addWatched()">+ Tambah</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="overlay" id="confirmModal">
+  <div class="modal">
+    <div class="modal-head"><h3>Confirm Jastip</h3><button class="modal-close" onclick="closeModal('confirmModal')">×</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Simpan sebagai identifier</label>
+        <label class="check-row"><input type="checkbox" id="savePhone" checked><span id="confirmPhoneText"></span></label>
+        <label class="check-row"><input type="checkbox" id="saveAddress"><span id="confirmAddressText"></span></label>
+      </div>
+      <div class="field">
+        <label>Catatan</label>
+        <textarea id="confirmNotes" rows="3" placeholder="Opsional — alasan, order no, dsb"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('confirmModal')">Batal</button>
+      <button class="btn btn-dark" onclick="doConfirmJastip()">Simpan ke Database</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD SUSPECT MODAL -->
+<div class="overlay" id="addSuspectModal">
+  <div class="modal">
+    <div class="modal-head"><h3>Tambah Jastip Manual</h3><button class="modal-close" onclick="closeModal('addSuspectModal')">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>No HP</label><input type="text" id="manualPhone" placeholder="08xx-xxxx-xxxx"></div>
+      <div class="field"><label>Alamat</label><textarea id="manualAddress" rows="3" placeholder="Alamat lengkap"></textarea></div>
+      <div class="field"><label>Nama (opsional)</label><input type="text" id="manualName" placeholder="Nama penerima"></div>
+      <div class="field"><label>Catatan</label><textarea id="manualNotes" rows="2" placeholder="Opsional"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('addSuspectModal')">Batal</button>
+      <button class="btn btn-dark" onclick="doAddManualSuspect()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://misrdmmvukdpranxnqjq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pc3JkbW12dWtkcHJhbnhucWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDI0NDQsImV4cCI6MjA5NjA3ODQ0NH0.vdE181TfoBBwlTPK3lTusaSAnGNABX_DwPvL7A8KK_M';
+
+async function sb(path, opts = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    ...(opts.headers || {})
+  };
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...opts, headers });
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = text;
+    try { msg = JSON.parse(text).message || msg; } catch(_) {}
+    throw new Error(msg || `Request failed (${res.status})`);
+  }
+  if (!text) return null;
+  try { return JSON.parse(text); } catch(_) { return null; }
+}
+
+function goPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (name === 'flags') loadFlags();
+  if (name === 'suspects') loadSuspects();
+  if (name === 'watched') loadWatched();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); }));
+
+const RULE_LABELS = {
+  rule_1_db_match: 'Database Match',
+  rule_2_bulk_same_product: 'Borongan (produk sama)',
+  rule_4_cross_order: 'Repeat Purchase'
+};
+
+// ============================================================
+// FLAGS
+// ============================================================
+let flagFilter = 'all';
+let flagData = [];
+
+function setFlagFilter(f, btn) {
+  flagFilter = f;
+  document.querySelectorAll('.chip[data-f]').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderFlags();
+}
+
+async function loadFlags() {
+  const list = document.getElementById('flagsList');
+  list.innerHTML = `<div class="empty"><p>Memuat…</p></div>`;
+  try {
+    const flags = await sb('jastip_flags?reviewed=eq.false&select=*,jastip_orders(order_no,recipient_name,phone,address_raw,city,province,products,uploaded_at)&order=created_at.desc&limit=200');
+    flagData = flags || [];
+    document.getElementById('statTotal').textContent = flagData.length;
+    document.getElementById('statHigh').textContent = flagData.filter(f => f.confidence === 'high').length;
+    document.getElementById('statMedium').textContent = flagData.filter(f => f.confidence === 'medium').length;
+    document.getElementById('statLow').textContent = flagData.filter(f => f.confidence === 'low').length;
+    renderFlags();
+  } catch(e) {
+    list.innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`;
+  }
+}
+
+function renderFlags() {
+  const list = document.getElementById('flagsList');
+  const rows = flagFilter === 'all' ? flagData : flagData.filter(f => f.confidence === flagFilter);
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Tidak ada order yang perlu direview.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(f => {
+    const o = f.jastip_orders || {};
+    const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
+    const orderJson = encodeURIComponent(JSON.stringify({ id: f.order_id, order_no: o.order_no, recipient_name: o.recipient_name, phone: o.phone, address_raw: o.address_raw }));
+    return `
+    <div class="flag-item">
+      <div class="f-order">#${o.order_no || '—'}<span class="sub">${products || '—'}</span></div>
+      <div class="f-contact">
+        <div class="name">${o.recipient_name || '—'}</div>
+        <div class="meta">${o.phone || '—'}<br>${o.city || ''}${o.province ? ', ' + o.province : ''}</div>
+      </div>
+      <div class="f-detail"><span class="rule">${RULE_LABELS[f.rule_triggered] || f.rule_triggered}</span><br>${f.detail || ''}</div>
+      <div><span class="badge ${f.confidence}">${f.confidence}</span></div>
+      <div class="actions">
+        <button class="btn btn-danger-ghost btn-sm" onclick="openConfirm(decodeURIComponent('${orderJson}'), '${f.id}')">Confirm Jastip</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearFlag('${f.id}')">Clear</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function clearFlag(flagId) {
+  try {
+    await sb(`jastip_flags?id=eq.${flagId}`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'cleared', reviewed_at: new Date().toISOString() }) });
+    flagData = flagData.filter(f => f.id !== flagId);
+    renderFlags();
+    showToast('Ditandai bukan jastip');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+let confirmTarget = null;
+let confirmFlagId = null;
+
+function openConfirm(orderJson, flagId) {
+  confirmTarget = JSON.parse(orderJson);
+  confirmFlagId = flagId;
+  document.getElementById('confirmPhoneText').textContent = confirmTarget.phone || '(tidak ada HP)';
+  document.getElementById('confirmAddressText').textContent = confirmTarget.address_raw || '(tidak ada alamat)';
+  document.getElementById('savePhone').checked = !!confirmTarget.phone;
+  document.getElementById('saveAddress').checked = false;
+  document.getElementById('confirmNotes').value = '';
+  document.getElementById('confirmModal').classList.add('show');
+}
+
+async function doConfirmJastip() {
+  if (!confirmTarget) return;
+  const savePhone = document.getElementById('savePhone').checked;
+  const saveAddress = document.getElementById('saveAddress').checked;
+  const notes = document.getElementById('confirmNotes').value.trim();
+  try {
+    await sb('jastip_suspects', {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: savePhone ? confirmTarget.phone : null,
+        phone_normalized: savePhone ? confirmTarget.phone.replace(/[^0-9]/g, '') : null,
+        address_raw: saveAddress ? confirmTarget.address_raw : null,
+        known_names: confirmTarget.recipient_name ? [confirmTarget.recipient_name] : [],
+        status: 'confirmed',
+        confidence: 'high',
+        notes: notes || `Order #${confirmTarget.order_no}`
+      })
+    });
+    await sb(`jastip_flags?id=eq.${confirmFlagId}`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
+    flagData = flagData.filter(f => f.id !== confirmFlagId);
+    renderFlags();
+    closeModal('confirmModal');
+    showToast('Disimpan ke Database Jastip');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+// ============================================================
+// SUSPECTS
+// ============================================================
+async function loadSuspects() {
+  const q = document.getElementById('suspectSearch').value.trim();
+  let query = 'select=*&order=last_seen_at.desc.nullslast,created_at.desc&status=neq.cleared';
+  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*)`;
+  try {
+    const suspects = await sb(`jastip_suspects?${query}`);
+    renderSuspects(suspects || []);
+  } catch(e) { showToast('Gagal memuat: ' + e.message); }
+}
+
+function renderSuspects(suspects) {
+  const body = document.getElementById('suspectsBody');
+  if (suspects.length === 0) {
+    body.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="glyph">◌</div><p>Belum ada data.</p></div></td></tr>`;
+    return;
+  }
+  body.innerHTML = suspects.map(s => `
+    <tr>
+      <td>${s.phone || '—'}</td>
+      <td style="max-width:200px">${s.address_raw || '—'}</td>
+      <td><div class="tag-list">${(s.known_names || []).map(n => `<span class="tag">${n}</span>`).join('') || '—'}</div></td>
+      <td><span class="badge ${s.status === 'confirmed' ? 'high' : s.status === 'suspected' ? 'medium' : 'low'}">${s.status}</span></td>
+      <td>${s.total_appearances ?? 1}</td>
+      <td>${s.last_seen_at ? new Date(s.last_seen_at).toLocaleDateString('id-ID') : '—'}</td>
+      <td style="max-width:160px">${s.notes || '—'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="clearSuspect('${s.id}')">Clear</button></td>
+    </tr>`).join('');
+}
+
+async function clearSuspect(id) {
+  if (!confirm('Tandai sebagai cleared (bukan jastip)?')) return;
+  try {
+    await sb(`jastip_suspects?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'cleared' }) });
+    loadSuspects();
+    showToast('Ditandai cleared');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+function openAddSuspect() {
+  ['manualPhone','manualAddress','manualName','manualNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('addSuspectModal').classList.add('show');
+}
+
+async function doAddManualSuspect() {
+  const phone = document.getElementById('manualPhone').value.trim();
+  const address = document.getElementById('manualAddress').value.trim();
+  const name = document.getElementById('manualName').value.trim();
+  const notes = document.getElementById('manualNotes').value.trim();
+  if (!phone && !address) { showToast('Minimal isi HP atau alamat'); return; }
+  try {
+    await sb('jastip_suspects', {
+      method: 'POST',
+      body: JSON.stringify({
+        phone: phone || null,
+        phone_normalized: phone ? phone.replace(/[^0-9]/g, '') : null,
+        address_raw: address || null,
+        known_names: name ? [name] : [],
+        status: 'confirmed',
+        confidence: 'high',
+        notes: notes || 'Ditambahkan manual'
+      })
+    });
+    closeModal('addSuspectModal');
+    loadSuspects();
+    showToast('Tersimpan');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+// ============================================================
+// WATCHED PRODUCTS
+// ============================================================
+async function loadWatched() {
+  const list = document.getElementById('watchedList');
+  try {
+    const items = await sb('jastip_watched_products?order=keyword.asc');
+    if (!items || items.length === 0) {
+      list.innerHTML = `<div class="empty"><p>Belum ada produk yang dipantau.</p></div>`;
+      return;
+    }
+    list.innerHTML = items.map(w => `
+      <div class="watched-row">
+        <div><div class="kw">${w.keyword}</div>${w.notes ? `<div class="note">${w.notes}</div>` : ''}</div>
+        <label class="switch">
+          <input type="checkbox" ${w.active ? 'checked' : ''} onchange="toggleWatched('${w.id}', this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>`).join('');
+  } catch(e) { list.innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`; }
+}
+
+async function toggleWatched(id, active) {
+  try {
+    await sb(`jastip_watched_products?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ active }) });
+    showToast(active ? 'Diaktifkan' : 'Dinonaktifkan');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+async function addWatched() {
+  const keyword = document.getElementById('newKeyword').value.trim();
+  const notes = document.getElementById('newKeywordNote').value.trim();
+  if (!keyword) return;
+  try {
+    await sb('jastip_watched_products', { method: 'POST', body: JSON.stringify({ keyword: keyword.toLowerCase(), notes: notes || null, active: true }) });
+    document.getElementById('newKeyword').value = '';
+    document.getElementById('newKeywordNote').value = '';
+    loadWatched();
+    showToast(`"${keyword}" ditambahkan`);
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+// INIT
+loadFlags();
+</script>
+</body>
+</html>
