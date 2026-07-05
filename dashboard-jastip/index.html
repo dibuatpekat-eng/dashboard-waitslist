@@ -104,24 +104,39 @@
 
   /* ---------- Cards / list ---------- */
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  .flag-item {
-    display: grid; grid-template-columns: 1.1fr 1.3fr 1.6fr .9fr auto;
-    gap: 18px; align-items: center;
-    padding: 16px 22px; border-bottom: 1px solid var(--line);
-  }
+  .flag-item { border-bottom: 1px solid var(--line); padding: 18px 22px; }
   .flag-item:last-child { border-bottom: none; }
   .flag-item:hover { background: #FCFBF9; }
-  .f-order { font-size: 13px; font-weight: 500; }
-  .f-order .sub { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: 2px; }
-  .f-contact .name { font-size: 13px; }
-  .f-contact .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
-  .f-detail { font-size: 12px; color: var(--ink); line-height: 1.5; }
-  .f-detail .rule { display: inline-block; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--paper); border-radius: 5px; padding: 2px 7px; margin-bottom: 5px; }
+
+  .flag-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+  .flag-why { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .flag-why .rule-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+  .flag-why .rule-icon.high { background: var(--red-bg); color: var(--red); }
+  .flag-why .rule-icon.medium { background: var(--orange-bg); color: var(--orange); }
+  .flag-why .rule-icon.low { background: var(--yellow-bg); color: var(--yellow); }
+  .flag-why .rule-text b { font-weight: 500; }
   .badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 500; white-space: nowrap; }
   .badge.high { background: var(--red-bg); color: var(--red); }
   .badge.medium { background: var(--orange-bg); color: var(--orange); }
   .badge.low { background: var(--yellow-bg); color: var(--yellow); }
-  .actions { display: flex; gap: 6px; }
+
+  .compare { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; margin-bottom: 14px; }
+  .compare-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+  .compare-side { background: var(--paper); border-radius: 10px; padding: 12px 14px; }
+  .compare-side .co-order { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .compare-side .co-name { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .co-field { font-size: 12.5px; line-height: 1.6; }
+  .co-field.match { font-weight: 600; color: var(--ink); background: #F3E9C9; display: inline-block; padding: 1px 7px; border-radius: 5px; }
+  .co-field.diff { color: var(--muted); }
+  .co-products { font-size: 12px; color: var(--ink); margin-top: 6px; line-height: 1.6; }
+
+  .flag-order-solo { background: var(--paper); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .flag-order-solo .co-name { font-size: 13px; font-weight: 500; }
+  .flag-order-solo .co-field { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+  .flag-order-solo .co-products { font-size: 13px; color: var(--ink); margin-top: 6px; }
+  .flag-order-solo .co-products .qty-hot { font-weight: 600; background: var(--red-bg); color: var(--red); padding: 1px 7px; border-radius: 5px; }
+
+  .actions { display: flex; gap: 6px; justify-content: flex-end; }
 
   .empty { text-align: center; padding: 70px 24px; color: var(--muted); }
   .empty .glyph { font-size: 26px; margin-bottom: 10px; opacity: .5; }
@@ -344,11 +359,17 @@ function showToast(msg) {
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); }));
 
-const RULE_LABELS = {
-  rule_1_db_match: 'Database Match',
-  rule_2_bulk_same_product: 'Borongan (produk sama)',
-  rule_4_cross_order: 'Repeat Purchase'
-};
+// Rule dari pipeline lama (upload PDF manual) — sudah diketahui logic-nya cacat
+// (rule_2_batch_dupe & rule_3_multi_watched lama menganggap "beli 2 watched
+// product BEDA" sebagai sinyal, padahal itu belanja wajar). Sengaja tidak
+// ditampilkan di sini lagi, datanya tidak dihapus, cuma disembunyikan.
+const CURRENT_RULES = ['rule_1_db_match', 'rule_2_bulk_same_product', 'rule_4_cross_order'];
+
+const RULE_ICON = { high: '!', medium: '~', low: '·' };
+
+function esc(s) {
+  return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 // ============================================================
 // FLAGS
@@ -367,7 +388,15 @@ async function loadFlags() {
   const list = document.getElementById('flagsList');
   list.innerHTML = `<div class="empty"><p>Memuat…</p></div>`;
   try {
-    const flags = await sb('jastip_flags?reviewed=eq.false&select=*,jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,address_raw,city,province,products,uploaded_at)&order=created_at.desc&limit=200');
+    const ruleFilter = `rule_triggered=in.(${CURRENT_RULES.join(',')})`;
+    const flags = await sb(
+      `jastip_flags?reviewed=eq.false&${ruleFilter}` +
+      `&select=*,` +
+      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,address_raw,city,province,products,uploaded_at),` +
+      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,address_raw),` +
+      `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,address_raw,known_names)` +
+      `&order=created_at.desc&limit=200`
+    );
     flagData = flags || [];
     document.getElementById('statTotal').textContent = flagData.length;
     document.getElementById('statHigh').textContent = flagData.filter(f => f.confidence === 'high').length;
@@ -389,18 +418,54 @@ function renderFlags() {
   }
 
   list.innerHTML = rows.map(f => {
-    const o = f.jastip_orders || {};
+    const o = f.order || {};
     const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
     const orderJson = encodeURIComponent(JSON.stringify({ id: f.order_id, order_no: o.order_no, recipient_name: o.recipient_name, phone: o.phone, address_raw: o.address_raw }));
+    const matchesPhone = /HP sama/i.test(f.detail || '');
+
+    let body;
+    if (f.rule_triggered === 'rule_2_bulk_same_product') {
+      const hot = (o.products || []).find(p => p.qty > 1);
+      body = `
+        <div class="flag-order-solo">
+          <div class="co-name">${esc(o.recipient_name) || '—'}</div>
+          <div class="co-field">${esc(o.phone) || '—'} · ${esc(o.city) || ''}${o.province ? ', ' + esc(o.province) : ''}</div>
+          <div class="co-products">${(o.products || []).map(p => p.qty > 1 ? `<span class="qty-hot">${esc(p.name)} ×${p.qty}</span>` : esc(p.name)).join(', ')}</div>
+        </div>`;
+    } else {
+      // rule_1_db_match (vs jastip_suspects) atau rule_4_cross_order (vs order lain)
+      const m = f.rule_triggered === 'rule_1_db_match' ? (f.matched_suspect || {}) : (f.matched_order || {});
+      const mName = f.rule_triggered === 'rule_1_db_match' ? (m.known_names || [])[0] : m.recipient_name;
+      const mLabel = f.rule_triggered === 'rule_1_db_match' ? 'Database Jastip' : `Order #${esc(m.order_no)}`;
+      body = `
+        <div class="compare">
+          <div class="compare-side">
+            <div class="co-order">Order #${esc(o.order_no) || '—'} (baru)</div>
+            <div class="co-name">${esc(o.recipient_name) || '—'}</div>
+            <div class="co-field ${matchesPhone ? 'match' : 'diff'}">${esc(o.phone) || '—'}</div><br>
+            <div class="co-field ${!matchesPhone ? 'match' : 'diff'}">${esc(o.address_raw) || '—'}</div>
+            <div class="co-products">${esc(products) || '—'}</div>
+          </div>
+          <div class="compare-arrow">⇄</div>
+          <div class="compare-side">
+            <div class="co-order">${mLabel}</div>
+            <div class="co-name">${esc(mName) || '(tidak ada nama)'}</div>
+            <div class="co-field ${matchesPhone ? 'match' : 'diff'}">${esc(m.phone) || '—'}</div><br>
+            <div class="co-field ${!matchesPhone ? 'match' : 'diff'}">${esc(m.address_raw) || '—'}</div>
+          </div>
+        </div>`;
+    }
+
     return `
     <div class="flag-item">
-      <div class="f-order">#${o.order_no || '—'}<span class="sub">${products || '—'}</span></div>
-      <div class="f-contact">
-        <div class="name">${o.recipient_name || '—'}</div>
-        <div class="meta">${o.phone || '—'}<br>${o.city || ''}${o.province ? ', ' + o.province : ''}</div>
+      <div class="flag-top">
+        <div class="flag-why">
+          <span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span>
+          <span class="rule-text">${esc(f.detail)}</span>
+        </div>
+        <span class="badge ${f.confidence}">${f.confidence}</span>
       </div>
-      <div class="f-detail"><span class="rule">${RULE_LABELS[f.rule_triggered] || f.rule_triggered}</span><br>${f.detail || ''}</div>
-      <div><span class="badge ${f.confidence}">${f.confidence}</span></div>
+      ${body}
       <div class="actions">
         <button class="btn btn-danger-ghost btn-sm" onclick="openConfirm(decodeURIComponent('${orderJson}'), '${f.id}')">Confirm Jastip</button>
         <button class="btn btn-ghost btn-sm" onclick="clearFlag('${f.id}')">Clear</button>
