@@ -268,7 +268,8 @@
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
     .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
     .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
-    .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 260px; }
+    .jd-flag-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .jd-flag-detail { font-size: 10px; color: var(--text-3); line-height: 1.4; }
     .jd-stat { cursor: pointer; transition: background 0.15s; }
     .jd-stat:hover { background: var(--bg); }
@@ -444,9 +445,11 @@
       .jd-flag-cell { align-items: flex-end; }
 
       /* Ringkas: default cuma Email/Token + Status yang kelihatan. Ketuk kartu
-         buat expand lihat detail lainnya (No. HP, produk, tanggal, dst). */
+         buat expand lihat detail lainnya (No. HP, produk, tanggal, dst).
+         Token Aktif juga selalu nampilin Email (bukan cuma string token yang
+         gak berarti apa-apa buat operator). */
       .jd-table-waitlist td:not([data-label="Email"]):not([data-label="Status"]):not(.jd-card-collapse-hint),
-      .jd-table-tokens td:not([data-label="Token"]):not([data-label="Status"]):not(.jd-card-collapse-hint) {
+      .jd-table-tokens td:not([data-label="Token"]):not([data-label="Email"]):not([data-label="Status"]):not(.jd-card-collapse-hint) {
         display: none;
       }
       .jd-table-waitlist tr.jd-card-open td,
@@ -456,6 +459,11 @@
       .jd-card-collapse-hint { display: block !important; font-size: 9px; color: var(--text-3); text-align: right; padding: 2px 14px 0; }
       tr.jd-card-open .jd-card-collapse-hint::after { content: '▴ tutup'; }
       tr:not(.jd-card-open) .jd-card-collapse-hint::after { content: '▾ detail'; }
+
+      /* Batch/bulk-select cuma dipakai di desktop -- di HP operator generate
+         satu-satu lewat tombol per-baris, jadi checkbox cuma bikin bingung
+         ("kok ada yang bisa dicentang, ada yang enggak"). Sembunyikan total. */
+      .jd-checkbox-cell { display: none !important; }
 
       /* Dropdown "Kelola" ngembang ke KIRI dari tombolnya (right:0). Di kartu
          mobile tombolnya nempel di kiri layar, jadi dropdown-nya kepotong ke
@@ -524,6 +532,7 @@
         <div class="jd-stat" onclick="filterByStat('invited')" title="Lihat pendaftar yang sudah dikirimi undangan">
           <div class="jd-stat-label">Undangan Terkirim</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:4px" id="jd-stat-conversion"></div>
         </div>
       </div>
 
@@ -1194,12 +1203,21 @@
         sbQuery('launch_waitlist_view?select=id'),
         sbQuery('launch_waitlist_view?select=id&status=eq.pending&is_flagged=eq.false&already_purchased=eq.false'),
         sbQuery('launch_waitlist_view?select=id&or=(is_flagged.eq.true,already_purchased.eq.true)'),
-        sbQuery('launch_waitlist_view?select=id&status=eq.invited')
+        sbQuery('launch_waitlist_view?select=id&status=eq.invited'),
+        // "Undangan Terkirim" doang gak jawab pertanyaan "dari yang diundang,
+        // berapa yang BENERAN checkout" -- makanya ditambah rasio konversi
+        // (dari semua yang pernah dapat token: invited/purchased/expired).
+        sbQuery('launch_waitlist_view?select=id&status=in.(invited,purchased,expired)'),
+        sbQuery('launch_waitlist_view?select=id&status=eq.purchased')
       ]);
       document.getElementById('jd-stat-total').textContent   = r[0].count != null ? r[0].count : '—';
       document.getElementById('jd-stat-clean').textContent   = r[1].count != null ? r[1].count : '—';
       document.getElementById('jd-stat-flagged').textContent = r[2].count != null ? r[2].count : '—';
       document.getElementById('jd-stat-invited').textContent = r[3].count != null ? r[3].count : '—';
+      var everSent  = r[4].count || 0;
+      var purchased = r[5].count || 0;
+      document.getElementById('jd-stat-conversion').textContent =
+        everSent > 0 ? purchased + '/' + everSent + ' checkout' : '';
     }
 
     // ── SELECTION ────────────────────────────────────────────
@@ -1268,7 +1286,15 @@
       if (cardFlagFilter === 'review') q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
       if (search) {
         var esc = search.replace(/[(),]/g, '');
-        q += '&or=(email.ilike.*' + encodeURIComponent(esc) + '*,phone.ilike.*' + encodeURIComponent(esc.replace(/[^0-9]/g, '')) + '*)';
+        var digits = esc.replace(/[^0-9]/g, '');
+        // Kalau search-nya email (gak ada digit), JANGAN ikut kirim kondisi
+        // phone.ilike.** -- itu wildcard kosong yang cocok ke SEMUA nomor HP,
+        // jadi keseluruhan filter OR-nya jebol dan balikin hampir semua baris.
+        if (digits) {
+          q += '&or=(email.ilike.*' + encodeURIComponent(esc) + '*,phone.ilike.*' + encodeURIComponent(digits) + '*)';
+        } else {
+          q += '&email=ilike.*' + encodeURIComponent(esc) + '*';
+        }
       }
 
       var from = (page - 1) * PAGE_SIZE;
@@ -1306,21 +1332,21 @@
         // lewat warna di tepi kiri baris + catatan kecil, bukan lewat nama
         // badge baru -- biar kosakata status tetap sedikit dan gampang discan.
         var rowAccentClass = '';
-        var statusHtml;
+        var statusBadge, statusCaption = '';
         if (row.status === 'pending') {
           if (row.is_flagged) {
             rowAccentClass = 'jd-row-jastip';
-            statusHtml = '<span class="badge badge-review">Perlu Ditinjau</span>' +
-              '<span class="jd-flag-detail">Terindikasi jastip</span>';
+            statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+            statusCaption = '<span class="jd-flag-detail">Terindikasi jastip</span>';
           } else if (row.already_purchased) {
             rowAccentClass = 'jd-row-bought';
-            statusHtml = '<span class="badge badge-review">Perlu Ditinjau</span>' +
-              '<span class="jd-flag-detail">Pernah beli: ' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
+            statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+            statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
           } else {
-            statusHtml = '<span class="badge badge-ok">Eligible</span>';
+            statusBadge = '<span class="badge badge-ok">Eligible</span>';
           }
         } else {
-          statusHtml = '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>';
+          statusBadge = '<span class="badge badge-' + row.status + '">' + (STATUS_LABELS[row.status] || row.status) + '</span>';
         }
 
         // Checkbox yang disabled tanpa alasan bikin operator bingung "kok gak
@@ -1332,19 +1358,22 @@
 
         // Aksi per-baris: generate token 1 orang tanpa harus centang + scroll
         // ke atas ke tombol bulk -- bulk-select tetap ada, ini cuma jalan pintas.
+        // Ditaruh SEBARIS sama badge (bukan di bawahnya) biar kolom Status gak
+        // makin tinggi/lebar tanpa perlu.
         var generateBtn = eligible === '1'
-          ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:4px 10px;margin-top:4px" data-id="' + row.id + '" data-row="' + rowJson + '" onclick="event.stopPropagation(); jdGenerateSingle(this)">Generate Token</button>'
+          ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" data-id="' + row.id + '" data-row="' + rowJson + '" onclick="event.stopPropagation(); jdGenerateSingle(this)">Generate Token</button>'
           : '';
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + generateBtn + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
-          '<td data-label=""><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
+          '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
           '<td data-label="Email">' + (row.email || '—') + '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Warna/Ukuran" style="color:var(--text-2)">' + (cMap[row.color] || row.color || '—') + ' / ' + (sMap[row.size] || row.size || '—') + '</td>' +
           '<td data-label="Daftar" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.registered_at) + '</td>' +
-          '<td data-label="Status"><div class="jd-flag-cell">' + statusHtml + generateBtn + '</div></td>' +
+          '<td data-label="Status"><div class="jd-flag-cell">' + statusHtml + '</div></td>' +
           '<td data-label="" class="jd-card-collapse-hint"></td>' +
           '</tr>';
       }).join('');
