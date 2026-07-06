@@ -324,6 +324,7 @@
       <div class="field"><label>No HP</label><input type="text" id="manualPhone" placeholder="08xx-xxxx-xxxx"></div>
       <div class="field"><label>Alamat</label><textarea id="manualAddress" rows="3" placeholder="Alamat lengkap"></textarea></div>
       <div class="field"><label>Nama (opsional)</label><input type="text" id="manualName" placeholder="Nama penerima"></div>
+      <div class="field"><label>Email (opsional)</label><input type="text" id="manualEmail" placeholder="email@contoh.com"></div>
       <div class="field"><label>Catatan</label><textarea id="manualNotes" rows="2" placeholder="Opsional"></textarea></div>
     </div>
     <div class="modal-foot">
@@ -833,7 +834,7 @@ async function clearSuspectGroup(gid, soloId) {
 }
 
 function openAddSuspect() {
-  ['manualPhone','manualAddress','manualName','manualNotes'].forEach(id => document.getElementById(id).value = '');
+  ['manualPhone','manualAddress','manualName','manualNotes','manualEmail'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('addSuspectModal').classList.add('show');
 }
 
@@ -842,7 +843,8 @@ async function doAddManualSuspect() {
   const address = document.getElementById('manualAddress').value.trim();
   const name = document.getElementById('manualName').value.trim();
   const notes = document.getElementById('manualNotes').value.trim();
-  if (!phone && !address) { showToast('Minimal isi HP atau alamat'); return; }
+  const email = document.getElementById('manualEmail').value.trim();
+  if (!phone && !address && !email) { showToast('Minimal isi HP, email, atau alamat'); return; }
   try {
     await sb('rpc/jastip_confirm_suspect', {
       method: 'POST',
@@ -852,7 +854,8 @@ async function doAddManualSuspect() {
         p_recipient_name: name || null,
         p_notes: notes || 'Ditambahkan manual',
         p_status: 'confirmed',
-        p_confidence: 'high'
+        p_confidence: 'high',
+        p_email: email || null
       })
     });
     closeModal('addSuspectModal');
