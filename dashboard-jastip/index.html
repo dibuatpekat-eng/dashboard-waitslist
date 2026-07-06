@@ -411,7 +411,7 @@ async function loadFlags() {
       `jastip_flags?reviewed=eq.false&${ruleFilter}` +
       `&select=*,` +
       `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
-      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized),` +
+      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized,products),` +
       `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,email,address_raw,address_normalized,known_names)` +
       `&order=created_at.desc&limit=200`
     );
