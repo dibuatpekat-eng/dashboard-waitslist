@@ -405,9 +405,9 @@ async function loadFlags() {
     const flags = await sb(
       `jastip_flags?reviewed=eq.false&${ruleFilter}` +
       `&select=*,` +
-      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
-      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,address_raw,address_normalized),` +
-      `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,address_raw,address_normalized,known_names)` +
+      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
+      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized),` +
+      `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,email,address_raw,address_normalized,known_names)` +
       `&order=created_at.desc&limit=200`
     );
     flagData = flags || [];
@@ -547,15 +547,18 @@ function renderFlags() {
 
     const distinctPhones = new Set(g.orders.map(o => o.phone_normalized).filter(Boolean));
     const distinctAddresses = new Set(g.orders.map(o => o.address_normalized).filter(Boolean));
+    const distinctEmails = new Set(g.orders.map(o => o.email_normalized || o.email).filter(Boolean));
     const namesDiffer = names.length > 1;
     const phonesDiffer = distinctPhones.size > 1;
     const addressesDiffer = distinctAddresses.size > 1;
+    const emailsDiffer = distinctEmails.size > 1;
 
     const ordersRows = g.orders.map(o => {
       const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
       const extra = [
         namesDiffer ? esc(o.recipient_name) : null,
         phonesDiffer ? esc(o.phone) : null,
+        emailsDiffer ? esc(o.email) : null,
         addressesDiffer ? esc(o.address_raw) : null
       ].filter(Boolean).join(' · ');
       return `<div class="co-field">Order #${esc(o.order_no)}${extra ? ' (' + extra + ')' : ''} — ${esc(products) || 'tanpa produk'}</div>`;
@@ -604,7 +607,7 @@ function renderFlags() {
         <span class="badge ${conf}">${conf}</span>
       </div>
       <div class="flag-order-solo">
-        <div class="co-field">${esc(primary.phone) || '—'} · ${esc(primary.address_raw) || '—'}</div>
+        <div class="co-field">${esc(primary.phone) || '—'} · ${esc(primary.email) || 'tanpa email'} · ${esc(primary.address_raw) || '—'}</div>
         ${ordersRows}
       </div>
       <div class="match-list">${matchRows}</div>
@@ -633,7 +636,7 @@ let confirmGroupIdx = null;
 function openConfirmGroup(idx) {
   confirmGroupIdx = idx;
   const primary = currentGroups[idx].orders[0] || {};
-  confirmTarget = { order_no: primary.order_no, recipient_name: primary.recipient_name, phone: primary.phone, address_raw: primary.address_raw };
+  confirmTarget = { order_no: primary.order_no, recipient_name: primary.recipient_name, phone: primary.phone, email: primary.email, address_raw: primary.address_raw };
   document.getElementById('confirmPhoneText').textContent = confirmTarget.phone || '(tidak ada HP)';
   document.getElementById('confirmAddressText').textContent = confirmTarget.address_raw || '(tidak ada alamat)';
   document.getElementById('savePhone').checked = !!confirmTarget.phone;
@@ -657,7 +660,8 @@ async function doConfirmJastip() {
         p_recipient_name: confirmTarget.recipient_name || null,
         p_notes: notes || `Order #${confirmTarget.order_no}`,
         p_status: 'confirmed',
-        p_confidence: 'high'
+        p_confidence: 'high',
+        p_email: confirmTarget.email || null
       })
     });
     await sb(`jastip_flags?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
@@ -686,7 +690,7 @@ async function loadSuspects() {
   const q = document.getElementById('suspectSearch').value.trim();
   let query = 'select=*&order=address_normalized.asc.nullslast,last_seen_at.desc.nullslast';
   if (suspectFilter === 'active') query += '&status=neq.cleared';
-  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*,known_names.cs.{${q}})`;
+  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*,email.ilike.*${q}*,known_names.cs.{${q}})`;
   try {
     const suspects = await sb(`jastip_suspects?${query}`);
     renderSuspects(suspects || []);
@@ -706,7 +710,7 @@ function renderSuspects(suspects) {
       <div class="sp-status"><span class="badge ${STATUS_BADGE[s.status] || 'low'}">${STATUS_LABEL[s.status] || s.status}</span></div>
       <div class="sp-main">
         <div class="sp-address">${esc(s.address_raw) || '(tanpa alamat)'}</div>
-        <div class="sp-phone">${esc(s.phone) || '(tanpa HP)'}</div>
+        <div class="sp-phone">${esc(s.phone) || '(tanpa HP)'}${s.email ? ' · ' + esc(s.email) : ''}</div>
         ${(s.known_names || []).length ? `<div class="sp-names tag-list">${s.known_names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>` : ''}
         ${s.notes ? `<div class="sp-notes">${esc(s.notes)}</div>` : ''}
       </div>
