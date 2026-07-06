@@ -460,10 +460,17 @@ function clusterFlags(rows) {
   });
 
   const clusters = new Map(); // root -> { orderIds: Set, flags: [] }
-  orderFlags.forEach((flags, orderId) => {
-    const root = dsu.find(orderId);
+  function getCluster(root) {
     if (!clusters.has(root)) clusters.set(root, { orderIds: new Set(), flags: [] });
-    const c = clusters.get(root);
+    return clusters.get(root);
+  }
+  // Order lama yang cuma jadi pembanding (matched_order) tidak pernah punya flag
+  // sendiri sebagai "order baru" — tapi tetap harus muncul di daftar order cluster ini.
+  orderInfo.forEach((info, orderId) => {
+    getCluster(dsu.find(orderId)).orderIds.add(orderId);
+  });
+  orderFlags.forEach((flags, orderId) => {
+    const c = getCluster(dsu.find(orderId));
     c.orderIds.add(orderId);
     flags.forEach(f => c.flags.push(f));
   });
