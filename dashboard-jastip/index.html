@@ -234,6 +234,7 @@
     </div>
 
     <div class="toolbar">
+      <input class="input" style="width:280px" id="flagSearch" placeholder="Cari order no, nama, HP, atau alamat…" oninput="renderFlags()">
       <button class="chip active" data-f="all" onclick="setFlagFilter('all', this)">Semua</button>
       <button class="chip" data-f="high" onclick="setFlagFilter('high', this)">High</button>
       <button class="chip" data-f="medium" onclick="setFlagFilter('medium', this)">Medium</button>
@@ -416,7 +417,21 @@ async function loadFlags() {
 
 function renderFlags() {
   const list = document.getElementById('flagsList');
-  const rows = flagFilter === 'all' ? flagData : flagData.filter(f => f.confidence === flagFilter);
+  let rows = flagFilter === 'all' ? flagData : flagData.filter(f => f.confidence === flagFilter);
+
+  const q = (document.getElementById('flagSearch')?.value || '').trim().toLowerCase();
+  if (q) {
+    rows = rows.filter(f => {
+      const o = f.order || {};
+      const m = f.rule_triggered === 'rule_1_db_match' ? (f.matched_suspect || {}) : (f.matched_order || {});
+      const haystack = [
+        o.order_no, o.recipient_name, o.phone, o.address_raw,
+        m.order_no, m.recipient_name, m.phone, m.address_raw,
+        (m.known_names || []).join(' ')
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
 
   if (rows.length === 0) {
     list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Tidak ada order yang perlu direview.</p></div>`;
@@ -509,16 +524,15 @@ async function doConfirmJastip() {
   const saveAddress = document.getElementById('saveAddress').checked;
   const notes = document.getElementById('confirmNotes').value.trim();
   try {
-    await sb('jastip_suspects', {
+    await sb('rpc/jastip_confirm_suspect', {
       method: 'POST',
       body: JSON.stringify({
-        phone: savePhone ? confirmTarget.phone : null,
-        phone_normalized: savePhone ? confirmTarget.phone.replace(/[^0-9]/g, '') : null,
-        address_raw: saveAddress ? confirmTarget.address_raw : null,
-        known_names: confirmTarget.recipient_name ? [confirmTarget.recipient_name] : [],
-        status: 'confirmed',
-        confidence: 'high',
-        notes: notes || `Order #${confirmTarget.order_no}`
+        p_phone: savePhone ? confirmTarget.phone : null,
+        p_address_raw: saveAddress ? confirmTarget.address_raw : null,
+        p_recipient_name: confirmTarget.recipient_name || null,
+        p_notes: notes || `Order #${confirmTarget.order_no}`,
+        p_status: 'confirmed',
+        p_confidence: 'high'
       })
     });
     await sb(`jastip_flags?id=eq.${confirmFlagId}`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
@@ -612,16 +626,15 @@ async function doAddManualSuspect() {
   const notes = document.getElementById('manualNotes').value.trim();
   if (!phone && !address) { showToast('Minimal isi HP atau alamat'); return; }
   try {
-    await sb('jastip_suspects', {
+    await sb('rpc/jastip_confirm_suspect', {
       method: 'POST',
       body: JSON.stringify({
-        phone: phone || null,
-        phone_normalized: phone ? phone.replace(/[^0-9]/g, '') : null,
-        address_raw: address || null,
-        known_names: name ? [name] : [],
-        status: 'confirmed',
-        confidence: 'high',
-        notes: notes || 'Ditambahkan manual'
+        p_phone: phone || null,
+        p_address_raw: address || null,
+        p_recipient_name: name || null,
+        p_notes: notes || 'Ditambahkan manual',
+        p_status: 'confirmed',
+        p_confidence: 'high'
       })
     });
     closeModal('addSuspectModal');
