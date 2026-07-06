@@ -603,7 +603,16 @@ function renderFlags() {
     const addressesDiffer = distinctAddresses.size > 1;
     const emailsDiffer = distinctEmails.size > 1;
 
-    const ordersRows = g.orders.map(o => {
+    // Order yang statusnya BUKAN completed (refunded/cancelled/dll) ditaruh di
+    // bagian bawah list -- itu sinyal yang kurang relevan buat ditinjau duluan
+    // (barangnya balik/gak jadi terkirim), biar operator scan yang penting dulu.
+    const sortedOrders = g.orders.slice().sort((a, b) => {
+      const aDone = (!a.order_status || a.order_status === 'completed') ? 0 : 1;
+      const bDone = (!b.order_status || b.order_status === 'completed') ? 0 : 1;
+      return aDone - bDone;
+    });
+
+    const ordersRows = sortedOrders.map(o => {
       const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
       const extra = [
         namesDiffer ? esc(o.recipient_name) : null,
@@ -611,10 +620,8 @@ function renderFlags() {
         emailsDiffer ? esc(o.email) : null,
         addressesDiffer ? esc(o.address_raw) : null
       ].filter(Boolean).join(' · ');
-      // Status cuma ditampilin kalau BUKAN completed -- itu status default/mayoritas,
-      // jadi nggak perlu ditandai; yang perlu diwaspadai operator itu refunded/cancelled
-      // dsb karena artinya barangnya balik/nggak jadi terkirim.
-      const statusTag = (o.order_status && o.order_status !== 'completed') ? ` [${esc(o.order_status)}]` : '';
+      const statusTag = (o.order_status && o.order_status !== 'completed')
+        ? ` <span class="badge low" style="vertical-align:middle">${esc(o.order_status)}</span>` : '';
       return `<div class="co-field">Order #${esc(o.order_no)}${extra ? ' (' + extra + ')' : ''}${statusTag} — ${esc(products) || 'tanpa produk'}</div>`;
     }).join('');
 
