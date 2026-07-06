@@ -417,22 +417,64 @@ async function loadFlags() {
   }
 }
 
-// Order yang sama sering ke-flag lebih dari sekali (cocok ke beberapa order/suspect
-// lama berbeda). Kelompokkan per order supaya user cuma lihat & review 1 kartu,
-// bukan 1 kartu per pasangan kecocokan.
+// Flag itu bukan "kartu per order" — dia bukti hubungan antara 2 pihak (order<->order
+// atau order<->suspect). Kalau Rianda punya 3 order yang saling nyambung, itu 3 node
+// yang harus di-cluster jadi SATU identitas, bukan dipisah per order baru. Union-Find
+// dipakai supaya order A<->B dan B<->C otomatis kebaca sebagai 1 orang yang sama
+// (A-B-C), bukan 2 kartu terpisah (A<->B dan B<->C).
 let currentGroups = [];
 const CONF_RANK = { high: 3, medium: 2, low: 1 };
 
-function groupFlags(rows) {
-  const map = new Map();
-  rows.forEach(f => {
-    if (!map.has(f.order_id)) map.set(f.order_id, { order: f.order || {}, items: [] });
-    map.get(f.order_id).items.push(f);
-  });
-  return Array.from(map.values());
+class DSU {
+  constructor() { this.parent = new Map(); }
+  find(x) {
+    if (!this.parent.has(x)) this.parent.set(x, x);
+    if (this.parent.get(x) !== x) this.parent.set(x, this.find(this.parent.get(x)));
+    return this.parent.get(x);
+  }
+  union(a, b) {
+    const ra = this.find(a), rb = this.find(b);
+    if (ra !== rb) this.parent.set(ra, rb);
+  }
 }
 
-function groupConfidence(items) {
+function clusterFlags(rows) {
+  const dsu = new DSU();
+  const orderInfo = new Map(); // order_id -> order object
+  const orderFlags = new Map(); // order_id -> flags where this order is the "baru" side
+
+  rows.forEach(f => {
+    dsu.find(f.order_id);
+    if (f.order) orderInfo.set(f.order_id, f.order);
+    if (!orderFlags.has(f.order_id)) orderFlags.set(f.order_id, []);
+    orderFlags.get(f.order_id).push(f);
+
+    if (f.rule_triggered === 'rule_4_cross_order' && f.matched_order_id) {
+      dsu.find(f.matched_order_id);
+      if (f.matched_order && !orderInfo.has(f.matched_order_id)) orderInfo.set(f.matched_order_id, f.matched_order);
+      dsu.union(f.order_id, f.matched_order_id);
+    }
+    if (f.rule_triggered === 'rule_1_db_match' && f.matched_suspect_id) {
+      dsu.union(f.order_id, 'suspect:' + f.matched_suspect_id);
+    }
+  });
+
+  const clusters = new Map(); // root -> { orderIds: Set, flags: [] }
+  orderFlags.forEach((flags, orderId) => {
+    const root = dsu.find(orderId);
+    if (!clusters.has(root)) clusters.set(root, { orderIds: new Set(), flags: [] });
+    const c = clusters.get(root);
+    c.orderIds.add(orderId);
+    flags.forEach(f => c.flags.push(f));
+  });
+
+  return Array.from(clusters.values()).map(c => ({
+    orders: Array.from(c.orderIds).map(id => ({ id, ...(orderInfo.get(id) || {}) })).filter(o => o.order_no),
+    items: c.flags
+  }));
+}
+
+function clusterConfidence(items) {
   return items.reduce((best, f) => (CONF_RANK[f.confidence] || 0) > (CONF_RANK[best] || 0) ? f.confidence : best, items[0].confidence);
 }
 
@@ -454,15 +496,15 @@ function renderFlags() {
     });
   }
 
-  let groups = groupFlags(rows);
-  if (flagFilter !== 'all') groups = groups.filter(g => groupConfidence(g.items) === flagFilter);
+  let groups = clusterFlags(rows);
+  if (flagFilter !== 'all') groups = groups.filter(g => clusterConfidence(g.items) === flagFilter);
   currentGroups = groups;
 
-  const allGroupsUnfiltered = groupFlags(flagData);
+  const allGroupsUnfiltered = clusterFlags(flagData);
   document.getElementById('statTotal').textContent = allGroupsUnfiltered.length;
-  document.getElementById('statHigh').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'high').length;
-  document.getElementById('statMedium').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'medium').length;
-  document.getElementById('statLow').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'low').length;
+  document.getElementById('statHigh').textContent = allGroupsUnfiltered.filter(g => clusterConfidence(g.items) === 'high').length;
+  document.getElementById('statMedium').textContent = allGroupsUnfiltered.filter(g => clusterConfidence(g.items) === 'medium').length;
+  document.getElementById('statLow').textContent = allGroupsUnfiltered.filter(g => clusterConfidence(g.items) === 'low').length;
 
   if (groups.length === 0) {
     list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Tidak ada order yang perlu direview.</p></div>`;
@@ -470,21 +512,24 @@ function renderFlags() {
   }
 
   list.innerHTML = groups.map((g, idx) => {
-    const o = g.order;
-    const conf = groupConfidence(g.items);
-    const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
+    const conf = clusterConfidence(g.items);
+    const primary = g.orders[0] || {};
+    const names = Array.from(new Set(g.orders.map(o => o.recipient_name).filter(Boolean)));
+
+    const ordersRows = g.orders.map(o => {
+      const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
+      return `<div class="co-field">Order #${esc(o.order_no)} — ${esc(products) || 'tanpa produk'}</div>`;
+    }).join('');
 
     const matchRows = g.items.map(f => {
       if (f.rule_triggered === 'rule_2_bulk_same_product') {
-        return `<div class="match-row"><span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span><span class="rule-text">${esc(f.detail)}</span></div>`;
+        return `<div class="match-row"><span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span><span class="rule-text">Order #${esc((f.order||{}).order_no)} — ${esc(f.detail)}</span></div>`;
       }
       const m = f.rule_triggered === 'rule_1_db_match' ? (f.matched_suspect || {}) : (f.matched_order || {});
-      const mName = f.rule_triggered === 'rule_1_db_match' ? (m.known_names || [])[0] : m.recipient_name;
       const mLabel = f.rule_triggered === 'rule_1_db_match' ? 'Database Jastip' : `Order #${esc(m.order_no)}`;
-      const mDetail = [mName, m.phone, m.address_raw].filter(Boolean).map(esc).join(' · ');
       return `<div class="match-row">
         <span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span>
-        <span class="rule-text">${esc(f.detail)} — <b>${mLabel}</b>${mDetail ? ' (' + mDetail + ')' : ''}</span>
+        <span class="rule-text">Order #${esc((f.order||{}).order_no)} — ${esc(f.detail)} — <b>${mLabel}</b></span>
       </div>`;
     }).join('');
 
@@ -492,14 +537,14 @@ function renderFlags() {
     <div class="flag-item">
       <div class="flag-top">
         <div class="flag-why">
-          <span class="co-name" style="font-weight:500">${esc(o.recipient_name) || '—'}</span>
-          <span style="color:var(--muted)">Order #${esc(o.order_no) || '—'}</span>
+          <span class="co-name" style="font-weight:500">${esc(names.join(' / ')) || '—'}</span>
+          <span style="color:var(--muted)">${g.orders.length} order</span>
         </div>
         <span class="badge ${conf}">${conf}${g.items.length > 1 ? ' · ' + g.items.length + ' kecocokan' : ''}</span>
       </div>
       <div class="flag-order-solo">
-        <div class="co-field">${esc(o.phone) || '—'} · ${esc(o.address_raw) || '—'}</div>
-        <div class="co-products">${esc(products) || '—'}</div>
+        <div class="co-field">${esc(primary.phone) || '—'} · ${esc(primary.address_raw) || '—'}</div>
+        ${ordersRows}
       </div>
       <div class="match-list">${matchRows}</div>
       <div class="actions">
@@ -526,8 +571,8 @@ let confirmGroupIdx = null;
 
 function openConfirmGroup(idx) {
   confirmGroupIdx = idx;
-  const o = currentGroups[idx].order;
-  confirmTarget = { order_no: o.order_no, recipient_name: o.recipient_name, phone: o.phone, address_raw: o.address_raw };
+  const primary = currentGroups[idx].orders[0] || {};
+  confirmTarget = { order_no: primary.order_no, recipient_name: primary.recipient_name, phone: primary.phone, address_raw: primary.address_raw };
   document.getElementById('confirmPhoneText').textContent = confirmTarget.phone || '(tidak ada HP)';
   document.getElementById('confirmAddressText').textContent = confirmTarget.address_raw || '(tidak ada alamat)';
   document.getElementById('savePhone').checked = !!confirmTarget.phone;
