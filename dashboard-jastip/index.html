@@ -439,8 +439,8 @@ async function loadFlags() {
     const flags = await sb(
       `jastip_flags?reviewed=eq.false&${ruleFilter}` +
       `&select=*,` +
-      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
-      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized,products),` +
+      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,address_normalized,city,province,products,uploaded_at,order_status),` +
+      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized,products,order_status),` +
       `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,email,address_raw,address_normalized,known_names)` +
       `&order=created_at.desc&limit=5000`
     );
@@ -611,7 +611,11 @@ function renderFlags() {
         emailsDiffer ? esc(o.email) : null,
         addressesDiffer ? esc(o.address_raw) : null
       ].filter(Boolean).join(' · ');
-      return `<div class="co-field">Order #${esc(o.order_no)}${extra ? ' (' + extra + ')' : ''} — ${esc(products) || 'tanpa produk'}</div>`;
+      // Status cuma ditampilin kalau BUKAN completed -- itu status default/mayoritas,
+      // jadi nggak perlu ditandai; yang perlu diwaspadai operator itu refunded/cancelled
+      // dsb karena artinya barangnya balik/nggak jadi terkirim.
+      const statusTag = (o.order_status && o.order_status !== 'completed') ? ` [${esc(o.order_status)}]` : '';
+      return `<div class="co-field">Order #${esc(o.order_no)}${extra ? ' (' + extra + ')' : ''}${statusTag} — ${esc(products) || 'tanpa produk'}</div>`;
     }).join('');
 
     // N order yang saling terhubung punya sampai N*(N-1)/2 pasangan flag — tapi itu
