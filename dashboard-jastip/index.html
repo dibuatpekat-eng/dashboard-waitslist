@@ -388,7 +388,7 @@ document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e
 // (rule_2_batch_dupe & rule_3_multi_watched lama menganggap "beli 2 watched
 // product BEDA" sebagai sinyal, padahal itu belanja wajar). Sengaja tidak
 // ditampilkan di sini lagi, datanya tidak dihapus, cuma disembunyikan.
-const CURRENT_RULES = ['rule_1_db_match', 'rule_2_bulk_same_product', 'rule_4_cross_order'];
+const CURRENT_RULES = ['rule_1_db_match', 'rule_2_bulk_same_product', 'rule_4_cross_order', 'rule_5_volume'];
 
 const RULE_ICON = { high: '!', medium: '~', low: '·' };
 
@@ -630,8 +630,10 @@ function renderFlags() {
     // jadi beberapa baris alasan per cluster berdasarkan data order-nya sendiri (bukan
     // teks flag), supaya tetap akurat walau clustering-nya datang dari kecocokan
     // HP/alamat yang tidak pernah dibandingkan langsung oleh rule engine.
-    const bulkItems = g.items.filter(f => f.rule_triggered === 'rule_2_bulk_same_product');
-    const linkItems = g.items.filter(f => f.rule_triggered !== 'rule_2_bulk_same_product');
+    // rule_2 (borongan) & rule_5 (akumulasi volume) detailnya informatif per-flag,
+    // jadi ditampilkan langsung; sisanya dirangkum jadi reason lines.
+    const bulkItems = g.items.filter(f => f.rule_triggered === 'rule_2_bulk_same_product' || f.rule_triggered === 'rule_5_volume');
+    const linkItems = g.items.filter(f => f.rule_triggered !== 'rule_2_bulk_same_product' && f.rule_triggered !== 'rule_5_volume');
 
     const addrMatches = linkItems.filter(f => /Alamat mirip/i.test(f.detail || ''));
     const maxAddrSim = addrMatches.reduce((max, f) => {
@@ -800,7 +802,22 @@ async function loadSuspects() {
   if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*,email.ilike.*${q}*,known_names.cs.{${q}})`;
   try {
     const suspects = await sb(`jastip_suspects?${query}`);
-    renderSuspects(suspects || []);
+    // Ambil juga order-order milik identitas ini, biar kartu suspect nampilin
+    // riwayat order persis kayak kartu di tab Flags ("kartu yang pindah tempat",
+    // bukan ringkasan kering).
+    let suspectOrders = [];
+    const phones = Array.from(new Set((suspects || []).map(s => s.phone_normalized).filter(Boolean)));
+    const emails = Array.from(new Set((suspects || []).map(s => s.email_normalized).filter(Boolean)));
+    const conds = [];
+    if (phones.length) conds.push(`phone_normalized.in.(${phones.join(',')})`);
+    if (emails.length) conds.push(`email_normalized.in.(${emails.map(e => '"' + encodeURIComponent(e) + '"').join(',')})`);
+    if (conds.length) {
+      suspectOrders = await sb(
+        `jastip_orders?select=order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,products,order_status,order_date` +
+        `&or=(${conds.join(',')})&order=order_no.asc&limit=2000`
+      ) || [];
+    }
+    renderSuspects(suspects || [], suspectOrders);
   } catch(e) {
     document.getElementById('suspectsList').innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`;
   }
@@ -819,7 +836,7 @@ function groupSuspects(rows) {
   return Array.from(map.values());
 }
 
-function renderSuspects(suspects) {
+function renderSuspects(suspects, suspectOrders) {
   const list = document.getElementById('suspectsList');
   if (suspects.length === 0) {
     list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Belum ada data.</p></div>`;
@@ -847,12 +864,32 @@ function renderSuspects(suspects) {
       return `<div class="co-field">${parts}</div>`;
     }).join('');
 
+    // Riwayat order milik identitas grup ini -- format sama dengan kartu Flags
+    // (nomor order, nama/email kalau beda-beda, badge status, produk), non-completed
+    // di bawah. Confirm jadi berasa "mindahin kartu", bukan meringkas jadi kering.
+    const groupPhones = new Set(rows.map(r => r.phone_normalized).filter(Boolean));
+    const groupEmails = new Set(rows.map(r => r.email_normalized).filter(Boolean));
+    const groupOrders = (suspectOrders || [])
+      .filter(o => groupPhones.has(o.phone_normalized) || groupEmails.has(o.email_normalized))
+      .sort((a, b) => {
+        const aDone = (!a.order_status || a.order_status === 'completed') ? 0 : 1;
+        const bDone = (!b.order_status || b.order_status === 'completed') ? 0 : 1;
+        return aDone - bDone || String(a.order_no).localeCompare(String(b.order_no), undefined, {numeric: true});
+      });
+    const orderLines = groupOrders.map(o => {
+      const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
+      const who = [o.recipient_name ? esc(o.recipient_name) : null, o.email ? esc(o.email) : null].filter(Boolean).join(' · ');
+      const statusTag = (o.order_status && o.order_status !== 'completed')
+        ? ` <span class="badge low" style="vertical-align:middle">${esc(o.order_status)}</span>` : '';
+      return `<div class="co-field">Order #${esc(o.order_no)}${who ? ' (' + who + ')' : ''}${statusTag} — ${esc(products) || 'tanpa produk'}</div>`;
+    }).join('');
+
     return `
     <div class="flag-item">
       <div class="flag-top">
         <div class="flag-why">
           <span class="co-name" style="font-weight:500">${esc(names.join(' / ')) || '—'}</span>
-          <span style="color:var(--muted)">${rows.length} identitas</span>
+          <span style="color:var(--muted)">${rows.length} identitas · ${groupOrders.length} order</span>
         </div>
         <span class="badge ${STATUS_BADGE[status] || 'low'}">${STATUS_LABEL[status] || status}</span>
       </div>
@@ -861,6 +898,7 @@ function renderSuspects(suspects) {
         ${names.length ? `<div class="sp-names tag-list" style="margin-top:8px">${names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>` : ''}
         ${note ? `<div class="sp-notes" style="margin-top:6px">${esc(note)}</div>` : ''}
       </div>
+      ${orderLines ? `<div class="flag-order-solo">${orderLines}</div>` : ''}
       <div class="flag-top" style="margin-bottom:0">
         <span style="color:var(--muted);font-size:11.5px">Terakhir: ${lastSeen ? new Date(lastSeen).toLocaleDateString('id-ID') : '—'}</span>
         <div class="actions">
@@ -907,16 +945,16 @@ async function doAddManualSuspect() {
   const email = document.getElementById('manualEmail').value.trim();
   if (!phone && !address && !email) { showToast('Minimal isi HP, email, atau alamat'); return; }
   try {
-    await sb('rpc/jastip_confirm_suspect', {
+    // Satu jalur dengan Confirm-dari-flag (RPC yang sama) -- dua jalur simpan yang
+    // beda itu rawan divergen diam-diam (persis insiden dua normalizer HP dulu).
+    await sb('rpc/jastip_confirm_identities', {
       method: 'POST',
       body: JSON.stringify({
-        p_phone: phone || null,
-        p_address_raw: address || null,
-        p_recipient_name: name || null,
+        p_identities: [{ phone: phone || null, email: email || null, name: name || null, address_raw: address || null }],
         p_notes: notes || 'Ditambahkan manual',
+        p_save_addresses: !!address,
         p_status: 'confirmed',
-        p_confidence: 'high',
-        p_email: email || null
+        p_confidence: 'high'
       })
     });
     closeModal('addSuspectModal');
