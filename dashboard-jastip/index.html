@@ -528,17 +528,35 @@ function renderFlags() {
       return `<div class="co-field">Order #${esc(o.order_no)} — ${esc(products) || 'tanpa produk'}</div>`;
     }).join('');
 
-    const matchRows = g.items.map(f => {
-      if (f.rule_triggered === 'rule_2_bulk_same_product') {
-        return `<div class="match-row"><span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span><span class="rule-text">Order #${esc((f.order||{}).order_no)} — ${esc(f.detail)}</span></div>`;
-      }
-      const m = f.rule_triggered === 'rule_1_db_match' ? (f.matched_suspect || {}) : (f.matched_order || {});
-      const mLabel = f.rule_triggered === 'rule_1_db_match' ? 'Database Jastip' : `Order #${esc(m.order_no)}`;
-      return `<div class="match-row">
-        <span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span>
-        <span class="rule-text">Order #${esc((f.order||{}).order_no)} — ${esc(f.detail)} — <b>${mLabel}</b></span>
-      </div>`;
-    }).join('');
+    // N order yang saling terhubung punya sampai N*(N-1)/2 pasangan flag — tapi itu
+    // semua cuma bukti berulang dari 1 kesimpulan yang sama (HP/alamat sama). Rangkum
+    // jadi beberapa baris alasan per cluster, bukan 1 baris per pasangan.
+    const bulkItems = g.items.filter(f => f.rule_triggered === 'rule_2_bulk_same_product');
+    const linkItems = g.items.filter(f => f.rule_triggered !== 'rule_2_bulk_same_product');
+    const phoneLinked = linkItems.some(f => /HP sama/i.test(f.detail || ''));
+    const addrMatches = linkItems.filter(f => /Alamat mirip/i.test(f.detail || ''));
+    const maxAddrSim = addrMatches.reduce((max, f) => {
+      const m = (f.detail || '').match(/\((\d+)%\)/);
+      return m ? Math.max(max, +m[1]) : max;
+    }, 0);
+    const dbMatchItem = linkItems.find(f => f.rule_triggered === 'rule_1_db_match');
+    const watchedProducts = Array.from(new Set(
+      linkItems.map(f => (f.detail || '').match(/produk sama \(([^)]+)\)/)?.[1]).filter(Boolean)
+    ));
+
+    const reasonLines = [];
+    if (phoneLinked) reasonLines.push(`${g.orders.length} order pakai nomor HP yang sama`);
+    if (addrMatches.length) reasonLines.push(`Alamat mirip antar-order (kemiripan tertinggi ${maxAddrSim}%)`);
+    if (watchedProducts.length) reasonLines.push(`Beli produk watched yang sama: ${esc(watchedProducts.join(', '))}`);
+    if (dbMatchItem) {
+      const m = dbMatchItem.matched_suspect || {};
+      reasonLines.push(`Cocok dengan Database Jastip${(m.known_names||[])[0] ? ' — ' + esc(m.known_names[0]) : ''}${m.phone ? ' · ' + esc(m.phone) : ''}`);
+    }
+
+    const matchRows = [
+      ...reasonLines.map(line => `<div class="match-row"><span class="rule-icon ${conf}">${RULE_ICON[conf] || '?'}</span><span class="rule-text">${line}</span></div>`),
+      ...bulkItems.map(f => `<div class="match-row"><span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span><span class="rule-text">Order #${esc((f.order||{}).order_no)} — ${esc(f.detail)}</span></div>`)
+    ].join('');
 
     return `
     <div class="flag-item">
@@ -547,7 +565,7 @@ function renderFlags() {
           <span class="co-name" style="font-weight:500">${esc(names.join(' / ')) || '—'}</span>
           <span style="color:var(--muted)">${g.orders.length} order</span>
         </div>
-        <span class="badge ${conf}">${conf}${g.items.length > 1 ? ' · ' + g.items.length + ' kecocokan' : ''}</span>
+        <span class="badge ${conf}">${conf}</span>
       </div>
       <div class="flag-order-solo">
         <div class="co-field">${esc(primary.phone) || '—'} · ${esc(primary.address_raw) || '—'}</div>
