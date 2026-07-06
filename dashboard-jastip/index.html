@@ -394,6 +394,14 @@ function esc(s) {
 // ============================================================
 let flagFilter = 'all';
 let flagData = [];
+let activeWatchedKeywords = [];
+
+async function loadActiveWatchedKeywords() {
+  try {
+    const rows = await sb('jastip_watched_products?select=keyword&active=eq.true');
+    activeWatchedKeywords = (rows || []).map(r => r.keyword.toLowerCase());
+  } catch(e) { activeWatchedKeywords = []; }
+}
 
 function setFlagFilter(f, btn) {
   flagFilter = f;
@@ -406,6 +414,7 @@ async function loadFlags() {
   const list = document.getElementById('flagsList');
   list.innerHTML = `<div class="empty"><p>Memuat…</p></div>`;
   try {
+    if (!activeWatchedKeywords.length) await loadActiveWatchedKeywords();
     const ruleFilter = `rule_triggered=in.(${CURRENT_RULES.join(',')})`;
     const flags = await sb(
       `jastip_flags?reviewed=eq.false&${ruleFilter}` +
@@ -583,8 +592,13 @@ function renderFlags() {
       return m ? Math.max(max, +m[1]) : max;
     }, 100);
     const dbMatchItem = linkItems.find(f => f.rule_triggered === 'rule_1_db_match');
+    // Cuma produk yang beneran match keyword watchlist aktif -- order yang
+    // ke-flag sering isinya campur (produk watched + produk biasa dalam 1
+    // keranjang), jadi jangan tampilin SELURUH isi order sebagai "watched".
     const watchedProducts = Array.from(new Set(
-      g.orders.flatMap(o => o.products || []).map(p => p.name).filter(Boolean)
+      g.orders.flatMap(o => o.products || [])
+        .map(p => p.name)
+        .filter(name => name && activeWatchedKeywords.some(kw => name.toLowerCase().includes(kw)))
     ));
 
     const reasonLines = [];
