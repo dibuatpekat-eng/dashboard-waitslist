@@ -405,9 +405,9 @@ async function loadFlags() {
     const flags = await sb(
       `jastip_flags?reviewed=eq.false&${ruleFilter}` +
       `&select=*,` +
-      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,address_raw,city,province,products,uploaded_at),` +
-      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,address_raw),` +
-      `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,address_raw,known_names)` +
+      `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
+      `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,address_raw,address_normalized),` +
+      `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,address_raw,address_normalized,known_names)` +
       `&order=created_at.desc&limit=200`
     );
     flagData = flags || [];
@@ -457,6 +457,28 @@ function clusterFlags(rows) {
     if (f.rule_triggered === 'rule_1_db_match' && f.matched_suspect_id) {
       dsu.union(f.order_id, 'suspect:' + f.matched_suspect_id);
     }
+  });
+
+  // Identitas orang itu bukan "siapa yang kebetulan sudah punya flag menghubungkan
+  // mereka" — ada order yang HP-nya beda tapi alamatnya sama persis (atau sebaliknya)
+  // dan tidak pernah dibandingkan langsung oleh rule engine (misal karena beli produk
+  // watched yang berbeda, jadi rule_4 tidak pernah jalan di antara mereka). Union
+  // ulang semua node yang share phone_normalized ATAU address_normalized yang identik,
+  // supaya "Rianda" dan "Rianda Zahara" di alamat yang sama tetap 1 identitas.
+  const byPhone = new Map();
+  const byAddress = new Map();
+  orderInfo.forEach((info, orderId) => {
+    if (info.phone_normalized) {
+      if (!byPhone.has(info.phone_normalized)) byPhone.set(info.phone_normalized, []);
+      byPhone.get(info.phone_normalized).push(orderId);
+    }
+    if (info.address_normalized) {
+      if (!byAddress.has(info.address_normalized)) byAddress.set(info.address_normalized, []);
+      byAddress.get(info.address_normalized).push(orderId);
+    }
+  });
+  [byPhone, byAddress].forEach(map => {
+    map.forEach(ids => { for (let i = 1; i < ids.length; i++) dsu.union(ids[0], ids[i]); });
   });
 
   const clusters = new Map(); // root -> { orderIds: Set, flags: [] }
@@ -523,31 +545,45 @@ function renderFlags() {
     const primary = g.orders[0] || {};
     const names = Array.from(new Set(g.orders.map(o => o.recipient_name).filter(Boolean)));
 
+    const distinctPhones = new Set(g.orders.map(o => o.phone_normalized).filter(Boolean));
+    const distinctAddresses = new Set(g.orders.map(o => o.address_normalized).filter(Boolean));
+    const namesDiffer = names.length > 1;
+    const phonesDiffer = distinctPhones.size > 1;
+    const addressesDiffer = distinctAddresses.size > 1;
+
     const ordersRows = g.orders.map(o => {
       const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
-      return `<div class="co-field">Order #${esc(o.order_no)} — ${esc(products) || 'tanpa produk'}</div>`;
+      const extra = [
+        namesDiffer ? esc(o.recipient_name) : null,
+        phonesDiffer ? esc(o.phone) : null,
+        addressesDiffer ? esc(o.address_raw) : null
+      ].filter(Boolean).join(' · ');
+      return `<div class="co-field">Order #${esc(o.order_no)}${extra ? ' (' + extra + ')' : ''} — ${esc(products) || 'tanpa produk'}</div>`;
     }).join('');
 
     // N order yang saling terhubung punya sampai N*(N-1)/2 pasangan flag — tapi itu
     // semua cuma bukti berulang dari 1 kesimpulan yang sama (HP/alamat sama). Rangkum
-    // jadi beberapa baris alasan per cluster, bukan 1 baris per pasangan.
+    // jadi beberapa baris alasan per cluster berdasarkan data order-nya sendiri (bukan
+    // teks flag), supaya tetap akurat walau clustering-nya datang dari kecocokan
+    // HP/alamat yang tidak pernah dibandingkan langsung oleh rule engine.
     const bulkItems = g.items.filter(f => f.rule_triggered === 'rule_2_bulk_same_product');
     const linkItems = g.items.filter(f => f.rule_triggered !== 'rule_2_bulk_same_product');
-    const phoneLinked = linkItems.some(f => /HP sama/i.test(f.detail || ''));
+
     const addrMatches = linkItems.filter(f => /Alamat mirip/i.test(f.detail || ''));
     const maxAddrSim = addrMatches.reduce((max, f) => {
       const m = (f.detail || '').match(/\((\d+)%\)/);
       return m ? Math.max(max, +m[1]) : max;
-    }, 0);
+    }, 100);
     const dbMatchItem = linkItems.find(f => f.rule_triggered === 'rule_1_db_match');
     const watchedProducts = Array.from(new Set(
-      linkItems.map(f => (f.detail || '').match(/produk sama \(([^)]+)\)/)?.[1]).filter(Boolean)
+      g.orders.flatMap(o => o.products || []).map(p => p.name).filter(Boolean)
     ));
 
     const reasonLines = [];
-    if (phoneLinked) reasonLines.push(`${g.orders.length} order pakai nomor HP yang sama`);
-    if (addrMatches.length) reasonLines.push(`Alamat mirip antar-order (kemiripan tertinggi ${maxAddrSim}%)`);
-    if (watchedProducts.length) reasonLines.push(`Beli produk watched yang sama: ${esc(watchedProducts.join(', '))}`);
+    if (g.orders.length > 1 && distinctPhones.size === 1) reasonLines.push(`${g.orders.length} order pakai nomor HP yang sama${namesDiffer ? ', dengan nama penerima berbeda-beda' : ''}`);
+    if (g.orders.length > 1 && distinctAddresses.size === 1 && distinctPhones.size > 1) reasonLines.push(`${g.orders.length} order dikirim ke alamat yang sama persis, tapi pakai HP berbeda-beda`);
+    else if (addrMatches.length) reasonLines.push(`Alamat mirip antar-order (kemiripan tertinggi ${maxAddrSim}%)`);
+    if (watchedProducts.length) reasonLines.push(`Produk watched yang dibeli: ${esc(watchedProducts.join(', '))}`);
     if (dbMatchItem) {
       const m = dbMatchItem.matched_suspect || {};
       reasonLines.push(`Cocok dengan Database Jastip${(m.known_names||[])[0] ? ' — ' + esc(m.known_names[0]) : ''}${m.phone ? ' · ' + esc(m.phone) : ''}`);
