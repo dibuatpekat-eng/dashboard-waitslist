@@ -240,16 +240,23 @@
     </div>
 
     <div class="toolbar">
-      <input class="input" style="width:280px" id="flagSearch" placeholder="Cari order no, nama, HP, atau alamat…" oninput="renderFlags()">
+      <input class="input" style="width:280px" id="flagSearch" placeholder="Cari order no, nama, HP, atau alamat…" oninput="flagPage=1; renderFlags()">
       <button class="chip active" data-f="all" onclick="setFlagFilter('all', this)">Semua</button>
       <button class="chip" data-f="high" onclick="setFlagFilter('high', this)">High</button>
       <button class="chip" data-f="medium" onclick="setFlagFilter('medium', this)">Medium</button>
       <button class="chip" data-f="low" onclick="setFlagFilter('low', this)">Low</button>
       <div class="spacer"></div>
+      <select class="input" id="flagPageSize" style="width:auto" onchange="setFlagPageSize(this.value)">
+        <option value="10">10 / halaman</option>
+        <option value="20" selected>20 / halaman</option>
+        <option value="50">50 / halaman</option>
+        <option value="100">100 / halaman</option>
+      </select>
       <button class="btn btn-ghost btn-sm" onclick="loadFlags()">↻ Refresh</button>
     </div>
 
     <div class="card" id="flagsList"></div>
+    <div class="toolbar" style="justify-content:center" id="flagPagination"></div>
   </div>
 
   <!-- SUSPECTS -->
@@ -395,6 +402,18 @@ function esc(s) {
 let flagFilter = 'all';
 let flagData = [];
 let activeWatchedKeywords = [];
+let flagPage = 1;
+let flagPageSize = 20;
+
+function setFlagPageSize(v) {
+  flagPageSize = parseInt(v, 10) || 20;
+  flagPage = 1;
+  renderFlags();
+}
+function changeFlagPage(dir) {
+  flagPage += dir;
+  renderFlags();
+}
 
 async function loadActiveWatchedKeywords() {
   try {
@@ -405,6 +424,7 @@ async function loadActiveWatchedKeywords() {
 
 function setFlagFilter(f, btn) {
   flagFilter = f;
+  flagPage = 1;
   document.querySelectorAll('.chip[data-f]').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   renderFlags();
@@ -422,7 +442,7 @@ async function loadFlags() {
       `order:jastip_orders!jastip_flags_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,address_normalized,city,province,products,uploaded_at),` +
       `matched_order:jastip_orders!jastip_flags_matched_order_id_fkey(order_no,recipient_name,phone,phone_normalized,email,address_raw,address_normalized,products),` +
       `matched_suspect:jastip_suspects!jastip_flags_matched_suspect_id_fkey(phone,phone_normalized,email,address_raw,address_normalized,known_names)` +
-      `&order=created_at.desc&limit=200`
+      `&order=created_at.desc&limit=5000`
     );
     flagData = flags || [];
     renderFlags();
@@ -551,10 +571,26 @@ function renderFlags() {
 
   if (groups.length === 0) {
     list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Tidak ada order yang perlu direview.</p></div>`;
+    document.getElementById('flagPagination').innerHTML = '';
     return;
   }
 
-  list.innerHTML = groups.map((g, idx) => {
+  // currentGroups tetap array PENUH (belum dipotong halaman) supaya index yang
+  // dipakai tombol Confirm/Clear (openConfirmGroup(idx), clearGroup(idx)) selalu
+  // nunjuk ke cluster yang benar -- cuma bagian yang DIRENDER yang dipotong per
+  // halaman, index aslinya (dari groups penuh) tetap dibawa lewat pageSlice.
+  const totalPages = Math.max(1, Math.ceil(groups.length / flagPageSize));
+  if (flagPage > totalPages) flagPage = totalPages;
+  if (flagPage < 1) flagPage = 1;
+  const startIdx = (flagPage - 1) * flagPageSize;
+  const pageSlice = groups.map((g, idx) => ({ g, idx })).slice(startIdx, startIdx + flagPageSize);
+
+  document.getElementById('flagPagination').innerHTML =
+    `<button class="btn btn-ghost btn-sm" onclick="changeFlagPage(-1)" ${flagPage <= 1 ? 'disabled' : ''}>← Prev</button>` +
+    `<span style="font-size:12.5px;color:var(--muted);padding:0 6px">Halaman ${flagPage} dari ${totalPages} (${groups.length} cluster)</span>` +
+    `<button class="btn btn-ghost btn-sm" onclick="changeFlagPage(1)" ${flagPage >= totalPages ? 'disabled' : ''}>Next →</button>`;
+
+  list.innerHTML = pageSlice.map(({ g, idx }) => {
     const conf = clusterConfidence(g.items);
     const primary = g.orders[0] || {};
     const names = Array.from(new Set(g.orders.map(o => o.recipient_name).filter(Boolean)));
