@@ -136,6 +136,12 @@
   .flag-order-solo .co-products { font-size: 13px; color: var(--ink); margin-top: 6px; }
   .flag-order-solo .co-products .qty-hot { font-weight: 600; background: var(--red-bg); color: var(--red); padding: 1px 7px; border-radius: 5px; }
 
+  .match-list { margin-bottom: 14px; }
+  .match-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .match-row:first-child { border-top: none; }
+  .match-row .rule-icon { flex-shrink: 0; margin-top: 1px; }
+  .match-row .rule-text b { font-weight: 500; }
+
   .actions { display: flex; gap: 6px; justify-content: flex-end; }
 
   .empty { text-align: center; padding: 70px 24px; color: var(--muted); }
@@ -405,19 +411,34 @@ async function loadFlags() {
       `&order=created_at.desc&limit=200`
     );
     flagData = flags || [];
-    document.getElementById('statTotal').textContent = flagData.length;
-    document.getElementById('statHigh').textContent = flagData.filter(f => f.confidence === 'high').length;
-    document.getElementById('statMedium').textContent = flagData.filter(f => f.confidence === 'medium').length;
-    document.getElementById('statLow').textContent = flagData.filter(f => f.confidence === 'low').length;
     renderFlags();
   } catch(e) {
     list.innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`;
   }
 }
 
+// Order yang sama sering ke-flag lebih dari sekali (cocok ke beberapa order/suspect
+// lama berbeda). Kelompokkan per order supaya user cuma lihat & review 1 kartu,
+// bukan 1 kartu per pasangan kecocokan.
+let currentGroups = [];
+const CONF_RANK = { high: 3, medium: 2, low: 1 };
+
+function groupFlags(rows) {
+  const map = new Map();
+  rows.forEach(f => {
+    if (!map.has(f.order_id)) map.set(f.order_id, { order: f.order || {}, items: [] });
+    map.get(f.order_id).items.push(f);
+  });
+  return Array.from(map.values());
+}
+
+function groupConfidence(items) {
+  return items.reduce((best, f) => (CONF_RANK[f.confidence] || 0) > (CONF_RANK[best] || 0) ? f.confidence : best, items[0].confidence);
+}
+
 function renderFlags() {
   const list = document.getElementById('flagsList');
-  let rows = flagFilter === 'all' ? flagData : flagData.filter(f => f.confidence === flagFilter);
+  let rows = flagData.slice();
 
   const q = (document.getElementById('flagSearch')?.value || '').trim().toLowerCase();
   if (q) {
@@ -433,83 +454,80 @@ function renderFlags() {
     });
   }
 
-  if (rows.length === 0) {
+  let groups = groupFlags(rows);
+  if (flagFilter !== 'all') groups = groups.filter(g => groupConfidence(g.items) === flagFilter);
+  currentGroups = groups;
+
+  const allGroupsUnfiltered = groupFlags(flagData);
+  document.getElementById('statTotal').textContent = allGroupsUnfiltered.length;
+  document.getElementById('statHigh').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'high').length;
+  document.getElementById('statMedium').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'medium').length;
+  document.getElementById('statLow').textContent = allGroupsUnfiltered.filter(g => groupConfidence(g.items) === 'low').length;
+
+  if (groups.length === 0) {
     list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Tidak ada order yang perlu direview.</p></div>`;
     return;
   }
 
-  list.innerHTML = rows.map(f => {
-    const o = f.order || {};
+  list.innerHTML = groups.map((g, idx) => {
+    const o = g.order;
+    const conf = groupConfidence(g.items);
     const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
-    const orderJson = encodeURIComponent(JSON.stringify({ id: f.order_id, order_no: o.order_no, recipient_name: o.recipient_name, phone: o.phone, address_raw: o.address_raw }));
-    const matchesPhone = /HP sama/i.test(f.detail || '');
 
-    let body;
-    if (f.rule_triggered === 'rule_2_bulk_same_product') {
-      const hot = (o.products || []).find(p => p.qty > 1);
-      body = `
-        <div class="flag-order-solo">
-          <div class="co-name">${esc(o.recipient_name) || '—'}</div>
-          <div class="co-field">${esc(o.phone) || '—'} · ${esc(o.city) || ''}${o.province ? ', ' + esc(o.province) : ''}</div>
-          <div class="co-products">${(o.products || []).map(p => p.qty > 1 ? `<span class="qty-hot">${esc(p.name)} ×${p.qty}</span>` : esc(p.name)).join(', ')}</div>
-        </div>`;
-    } else {
-      // rule_1_db_match (vs jastip_suspects) atau rule_4_cross_order (vs order lain)
+    const matchRows = g.items.map(f => {
+      if (f.rule_triggered === 'rule_2_bulk_same_product') {
+        return `<div class="match-row"><span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span><span class="rule-text">${esc(f.detail)}</span></div>`;
+      }
       const m = f.rule_triggered === 'rule_1_db_match' ? (f.matched_suspect || {}) : (f.matched_order || {});
       const mName = f.rule_triggered === 'rule_1_db_match' ? (m.known_names || [])[0] : m.recipient_name;
       const mLabel = f.rule_triggered === 'rule_1_db_match' ? 'Database Jastip' : `Order #${esc(m.order_no)}`;
-      body = `
-        <div class="compare">
-          <div class="compare-side">
-            <div class="co-order">Order #${esc(o.order_no) || '—'} (baru)</div>
-            <div class="co-name">${esc(o.recipient_name) || '—'}</div>
-            <div class="co-field ${matchesPhone ? 'match' : 'diff'}">${esc(o.phone) || '—'}</div><br>
-            <div class="co-field ${!matchesPhone ? 'match' : 'diff'}">${esc(o.address_raw) || '—'}</div>
-            <div class="co-products">${esc(products) || '—'}</div>
-          </div>
-          <div class="compare-arrow">⇄</div>
-          <div class="compare-side">
-            <div class="co-order">${mLabel}</div>
-            <div class="co-name">${esc(mName) || '(tidak ada nama)'}</div>
-            <div class="co-field ${matchesPhone ? 'match' : 'diff'}">${esc(m.phone) || '—'}</div><br>
-            <div class="co-field ${!matchesPhone ? 'match' : 'diff'}">${esc(m.address_raw) || '—'}</div>
-          </div>
-        </div>`;
-    }
+      const mDetail = [mName, m.phone, m.address_raw].filter(Boolean).map(esc).join(' · ');
+      return `<div class="match-row">
+        <span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span>
+        <span class="rule-text">${esc(f.detail)} — <b>${mLabel}</b>${mDetail ? ' (' + mDetail + ')' : ''}</span>
+      </div>`;
+    }).join('');
 
     return `
     <div class="flag-item">
       <div class="flag-top">
         <div class="flag-why">
-          <span class="rule-icon ${f.confidence}">${RULE_ICON[f.confidence] || '?'}</span>
-          <span class="rule-text">${esc(f.detail)}</span>
+          <span class="co-name" style="font-weight:500">${esc(o.recipient_name) || '—'}</span>
+          <span style="color:var(--muted)">Order #${esc(o.order_no) || '—'}</span>
         </div>
-        <span class="badge ${f.confidence}">${f.confidence}</span>
+        <span class="badge ${conf}">${conf}${g.items.length > 1 ? ' · ' + g.items.length + ' kecocokan' : ''}</span>
       </div>
-      ${body}
+      <div class="flag-order-solo">
+        <div class="co-field">${esc(o.phone) || '—'} · ${esc(o.address_raw) || '—'}</div>
+        <div class="co-products">${esc(products) || '—'}</div>
+      </div>
+      <div class="match-list">${matchRows}</div>
       <div class="actions">
-        <button class="btn btn-danger-ghost btn-sm" onclick="openConfirm(decodeURIComponent('${orderJson}'), '${f.id}')">Confirm Jastip</button>
-        <button class="btn btn-ghost btn-sm" onclick="clearFlag('${f.id}')">Clear</button>
+        <button class="btn btn-danger-ghost btn-sm" onclick="openConfirmGroup(${idx})">Confirm Jastip</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearGroup(${idx})">Clear</button>
       </div>
     </div>`;
   }).join('');
 }
 
-async function clearFlag(flagId) {
+async function clearGroup(idx) {
+  const g = currentGroups[idx];
+  const ids = g.items.map(f => f.id);
   try {
-    await sb(`jastip_flags?id=eq.${flagId}`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'cleared', reviewed_at: new Date().toISOString() }) });
-    flagData = flagData.filter(f => f.id !== flagId);
+    await sb(`jastip_flags?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'cleared', reviewed_at: new Date().toISOString() }) });
+    flagData = flagData.filter(f => !ids.includes(f.id));
     renderFlags();
     showToast('Ditandai bukan jastip');
   } catch(e) { showToast('Error: ' + e.message); }
 }
 
 let confirmTarget = null;
-let confirmFlagId = null;
+let confirmGroupIdx = null;
 
-function openConfirm(orderJson, flagId) {
-  confirmTarget = JSON.parse(orderJson);
-  confirmFlagId = flagId;
+function openConfirmGroup(idx) {
+  confirmGroupIdx = idx;
+  const o = currentGroups[idx].order;
+  confirmTarget = { order_no: o.order_no, recipient_name: o.recipient_name, phone: o.phone, address_raw: o.address_raw };
   document.getElementById('confirmPhoneText').textContent = confirmTarget.phone || '(tidak ada HP)';
   document.getElementById('confirmAddressText').textContent = confirmTarget.address_raw || '(tidak ada alamat)';
   document.getElementById('savePhone').checked = !!confirmTarget.phone;
@@ -519,7 +537,8 @@ function openConfirm(orderJson, flagId) {
 }
 
 async function doConfirmJastip() {
-  if (!confirmTarget) return;
+  if (confirmGroupIdx === null || !confirmTarget) return;
+  const ids = currentGroups[confirmGroupIdx].items.map(f => f.id);
   const savePhone = document.getElementById('savePhone').checked;
   const saveAddress = document.getElementById('saveAddress').checked;
   const notes = document.getElementById('confirmNotes').value.trim();
@@ -535,8 +554,8 @@ async function doConfirmJastip() {
         p_confidence: 'high'
       })
     });
-    await sb(`jastip_flags?id=eq.${confirmFlagId}`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
-    flagData = flagData.filter(f => f.id !== confirmFlagId);
+    await sb(`jastip_flags?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
+    flagData = flagData.filter(f => !ids.includes(f.id));
     renderFlags();
     closeModal('confirmModal');
     showToast('Disimpan ke Database Jastip');
