@@ -1412,9 +1412,14 @@
         // ke atas ke tombol bulk -- bulk-select tetap ada, ini cuma jalan pintas.
         // Ditaruh SEBARIS sama badge (bukan di bawahnya) biar kolom Status gak
         // makin tinggi/lebar tanpa perlu.
+        // Flag/pernah-beli itu sinyal buat DITINJAU MANUAL, bukan larangan mutlak --
+        // operator kadang sudah cek sendiri (mis. false positive, atau memang mau
+        // dikasih akses meski kena flag) dan butuh jalan untuk tetap generate token.
+        // Tombol ini beda warna + wajib confirm() supaya tidak kepencet gak sengaja,
+        // dan alasan flag-nya diikutkan di dialog biar operator sadar apa yang di-override.
         var generateBtn = eligible === '1'
           ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" data-id="' + row.id + '" data-row="' + rowJson + '" onclick="event.stopPropagation(); jdGenerateSingle(this)">Generate Token</button>'
-          : '';
+          : (isActionable ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px;border-color:var(--warn,#B4620C);color:var(--warn,#B4620C)" data-id="' + row.id + '" data-row="' + rowJson + '" data-reason="' + disabledReason.replace(/"/g, '&quot;') + '" onclick="event.stopPropagation(); jdGenerateOverride(this)">Generate Anyway</button>' : '');
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + generateBtn + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
@@ -1442,6 +1447,23 @@
     // biar operator gak perlu scroll ke atas buat generate satu token aja.
     function jdGenerateSingle(btn) {
       var row = JSON.parse(btn.dataset.row);
+      selectedRows = {};
+      selectedRows[btn.dataset.id] = row;
+      generateSelected();
+    }
+
+    // Override untuk baris yang kena flag (jastip / pernah beli) tapi operator
+    // sudah tinjau manual dan tetap mau kasih akses. Reuse jalur generate yang
+    // sama persis (generateSelected) -- gate is_flagged/already_purchased itu
+    // cuma tampilan, backend tidak menolak insert token untuk waitlist_id manapun.
+    function jdGenerateOverride(btn) {
+      var row = JSON.parse(btn.dataset.row);
+      var reason = btn.dataset.reason || 'kena flag';
+      var ok = confirm(
+        'Entry ini ditandai: ' + reason + '.\n\n' +
+        (row.email || '(tanpa email)') + ' — tetap generate token untuk orang ini?'
+      );
+      if (!ok) return;
       selectedRows = {};
       selectedRows[btn.dataset.id] = row;
       generateSelected();
