@@ -739,11 +739,11 @@
             <span class="jd-section-title">Database Jastip <span style="font-weight:400;font-size:11px;color:var(--text-3)">— referensi dari sistem jastip_detector (tabel terpisah), link ke waitlist via no. HP</span></span>
           </div>
           <div style="padding:14px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)">
-            Ini bukan data yang sama dengan "Pernah Beli" di tab Waitlist — jastip_detector nebak siapa yang jastip dari pola alamat/no. HP di banyak order,
-            sedangkan "Pernah Beli" itu fakta transaksi (order id jelas). Sengaja dipisah, tapi tautannya sama-sama no. HP jadi bisa dicek silang manual.
-            Klik <strong>Whitelist</strong> kalau ternyata bukan jastip (misal keluarga 1 alamat) — status ini tersimpan balik ke sistem jastip_detector.
+            Cerminan <strong>read-only</strong> dari Database Jastip yang dikonfirmasi di
+            <a href="https://dashboard-jastip.vercel.app" target="_blank" style="color:var(--text);text-decoration:underline">Dashboard Jastip</a>.
+            Ditampilkan di sini biar bisa dicek silang saat meninjau waitlist. Untuk <strong>mengelola</strong> (confirm / clear / ubah level),
+            lakukan di Dashboard Jastip — satu tempat, biar keputusan tidak kembar & inkonsisten.
           </div>
-          <div class="jd-scroll-hint">← Geser tabel untuk lihat kolom lainnya →</div>
           <div id="jd-jastip-body">
             <div class="jd-loading">Memuat...</div>
           </div>
@@ -935,60 +935,82 @@
 
     var jdJastipLoaded = false;
 
-    // Referensi read-only (kecuali tombol Whitelist): data jastip_suspects, sistem
-    // terpisah (jastip_detector). Link ke waitlist cuma lewat no. HP karena tabel
-    // ini gak nyimpen email — jadi tampilkan alamat juga biar admin bisa
-    // mengenali orangnya secara manual.
+    // Cerminan READ-ONLY dari Database Jastip (dikelola di Dashboard Jastip).
+    // Dikelompokkan per group_id (1 kartu = 1 komplotan) persis seperti di sana,
+    // lengkap dengan identitas (HP/email/alamat) + riwayat order-nya, TANPA tombol
+    // aksi apa pun. Sengaja read-only: pengelolaan cuma di satu tempat biar
+    // keputusan tidak kembar/inkonsisten antar dua dashboard.
     async function loadJastipSuspects() {
       var container = document.getElementById('jd-jastip-body');
       container.innerHTML = '<div class="jd-loading">Memuat...</div>';
 
-      var result = await sbQuery('jastip_suspects?select=id,phone,known_names,known_products,address_raw,confidence,total_appearances,last_seen_at,review_action&status=eq.confirmed&order=last_seen_at.desc');
-
-      if (!result.data || !result.data.length) {
+      var sres = await sbQuery('jastip_suspects?select=id,group_id,phone,phone_normalized,email,email_normalized,known_names,address_raw,confidence,notes,last_seen_at&status=eq.confirmed&order=last_seen_at.desc');
+      var suspects = sres.data || [];
+      if (!suspects.length) {
         container.innerHTML = '<div class="jd-empty">Belum ada suspect jastip terkonfirmasi.</div>';
         return;
       }
 
-      var html = '<div class="jd-table-wrap"><table class="jd-table-waitlist" id="jd-table-jastip"><thead><tr>' +
-        '<th>No. HP</th><th>Nama yang tercatat</th><th>Alamat</th><th>Produk yang pernah dibeli</th><th>Confidence</th><th>Terakhir terlihat</th><th></th>' +
-        '</tr></thead><tbody>';
+      // Ambil riwayat order milik identitas-identitas ini (match HP/email), sama
+      // seperti kartu di Dashboard Jastip.
+      var phones = Array.from(new Set(suspects.map(function(s){ return s.phone_normalized; }).filter(Boolean)));
+      var emails = Array.from(new Set(suspects.map(function(s){ return s.email_normalized; }).filter(Boolean)));
+      var orders = [];
+      var conds = [];
+      if (phones.length) conds.push('phone_normalized.in.(' + phones.join(',') + ')');
+      if (emails.length) conds.push('email_normalized.in.(' + emails.map(function(e){ return '"' + encodeURIComponent(e) + '"'; }).join(',') + ')');
+      if (conds.length) {
+        var ores = await sbQuery('jastip_orders?select=order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,products,order_status&or=(' + conds.join(',') + ')&limit=2000');
+        orders = ores.data || [];
+      }
 
-      result.data.forEach(function(row) {
-        var names = Array.isArray(row.known_names) ? row.known_names.join(', ') : (row.known_names || '—');
-        var products = row.known_products ? (Array.isArray(row.known_products) ? row.known_products.join(', ') : JSON.stringify(row.known_products)) : '—';
-        var whitelisted = row.review_action === 'whitelisted';
-        html += '<tr>' +
-          '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
-          '<td data-label="Nama" style="color:var(--text-2)">' + esc(names) + '</td>' +
-          '<td data-label="Alamat" style="color:var(--text-2)">' + esc(row.address_raw || '—') + '</td>' +
-          '<td data-label="Produk" style="color:var(--text-2)">' + esc(products) + '</td>' +
-          '<td data-label="Confidence">' + (whitelisted ? '<span class="badge badge-ok">Whitelisted</span>' : '<span class="badge badge-flag">' + (row.confidence || '—') + '</span>') + '</td>' +
-          '<td data-label="Terakhir" style="color:var(--text-3);white-space:nowrap">' + fmtDate(row.last_seen_at) + '</td>' +
-          '<td data-label="">' + (whitelisted
-            ? '<button class="jd-btn jd-btn-outline" onclick="whitelistJastip(\'' + row.id + '\', false)">Batalkan whitelist</button>'
-            : '<button class="jd-btn jd-btn-outline" onclick="whitelistJastip(\'' + row.id + '\', true)">Whitelist</button>') + '</td>' +
-          '</tr>';
+      // Group by group_id
+      var groups = {};
+      suspects.forEach(function(s) {
+        var k = s.group_id || ('solo:' + s.id);
+        (groups[k] = groups[k] || []).push(s);
       });
 
-      html += '</tbody></table></div>';
+      var html = '';
+      Object.keys(groups).forEach(function(k) {
+        var rows = groups[k];
+        var names = Array.from(new Set(rows.reduce(function(a, r){ return a.concat(r.known_names || []); }, []).filter(Boolean)));
+        var conf = rows.map(function(r){ return r.confidence; }).filter(Boolean)[0] || 'high';
+        var note = rows.map(function(r){ return r.notes; }).filter(Boolean)[0];
+        var lastSeen = rows.map(function(r){ return r.last_seen_at; }).filter(Boolean).sort().slice(-1)[0];
+
+        var gPhones = {}, gEmails = {};
+        rows.forEach(function(r){ if (r.phone_normalized) gPhones[r.phone_normalized] = 1; if (r.email_normalized) gEmails[r.email_normalized] = 1; });
+        var idLines = rows.map(function(r) {
+          return '<div style="font-size:12px;color:var(--text-2);line-height:1.7">' +
+            esc(fmtPhone(r.phone) || '(tanpa HP)') + (r.email ? ' · ' + esc(r.email) : '') + (r.address_raw ? ' · ' + esc(r.address_raw) : '') + '</div>';
+        }).join('');
+        var gOrders = orders.filter(function(o){ return gPhones[o.phone_normalized] || gEmails[o.email_normalized]; })
+          .sort(function(a, b){
+            var ad = (!a.order_status || a.order_status === 'completed') ? 0 : 1;
+            var bd = (!b.order_status || b.order_status === 'completed') ? 0 : 1;
+            return ad - bd;
+          });
+        var orderLines = gOrders.map(function(o) {
+          var products = (o.products || []).map(function(p){ return p.name + (p.qty > 1 ? ' ×' + p.qty : ''); }).join(', ');
+          var tag = (o.order_status && o.order_status !== 'completed') ? ' <span class="badge badge-review" style="font-size:9px">' + esc(o.order_status) + '</span>' : '';
+          return '<div style="font-size:12px;color:var(--text-2);line-height:1.7">Order #' + esc(o.order_no) + tag + ' — ' + (esc(products) || 'tanpa produk') + '</div>';
+        }).join('');
+
+        html += '<div style="border-bottom:1px solid var(--border);padding:16px 20px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+            '<div><strong style="font-size:13px">' + (esc(names.join(' / ')) || '—') + '</strong>' +
+            '<span style="color:var(--text-3);font-size:11px;margin-left:8px">' + rows.length + ' identitas · ' + gOrders.length + ' order</span></div>' +
+            '<span class="badge badge-flag">' + esc(conf) + '</span>' +
+          '</div>' +
+          '<div style="background:var(--bg-2,#F7F5F2);border-radius:8px;padding:10px 12px">' + idLines +
+            (orderLines ? '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">' + orderLines + '</div>' : '') +
+            (note ? '<div style="margin-top:8px;font-style:italic;color:var(--text-3);font-size:11.5px">' + esc(note) + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      });
+
       container.innerHTML = html;
-    }
-
-    // Nulis balik ke jastip_suspects (sistem terpisah) supaya keputusan "ini
-    // bukan jastip" konsisten di kedua sistem, bukan cuma disembunyikan di sini.
-    async function whitelistJastip(id, whitelist) {
-      await sbQuery('jastip_suspects?id=eq.' + id, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify({
-          reviewed: true,
-          review_action: whitelist ? 'whitelisted' : null,
-          reviewed_at: new Date().toISOString()
-        })
-      });
-      showToast(whitelist ? 'Ditandai whitelist.' : 'Whitelist dibatalkan.');
-      loadJastipSuspects();
     }
 
     async function lookupPurchases() {
