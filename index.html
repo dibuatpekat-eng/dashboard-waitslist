@@ -1335,15 +1335,17 @@
       if (cardFlagFilter === 'review')   q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
       if (cardFlagFilter === 'eversent') q += '&effective_status=in.(invited,purchased,expired)';
       if (search) {
-        var esc = search.replace(/[(),]/g, '');
-        var digits = esc.replace(/[^0-9]/g, '');
+        // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
+        // (XSS-escape) di seluruh scope loadWaitlist, bikin render baris error.
+        var sTerm = search.replace(/[(),]/g, '');
+        var digits = sTerm.replace(/[^0-9]/g, '');
         // Kalau search-nya email (gak ada digit), JANGAN ikut kirim kondisi
         // phone.ilike.** -- itu wildcard kosong yang cocok ke SEMUA nomor HP,
         // jadi keseluruhan filter OR-nya jebol dan balikin hampir semua baris.
         if (digits) {
-          q += '&or=(email.ilike.*' + encodeURIComponent(esc) + '*,phone.ilike.*' + encodeURIComponent(digits) + '*)';
+          q += '&or=(email.ilike.*' + encodeURIComponent(sTerm) + '*,phone.ilike.*' + encodeURIComponent(digits) + '*)';
         } else {
-          q += '&email=ilike.*' + encodeURIComponent(esc) + '*';
+          q += '&email=ilike.*' + encodeURIComponent(sTerm) + '*';
         }
       }
 
