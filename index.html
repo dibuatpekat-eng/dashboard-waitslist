@@ -764,6 +764,7 @@
       <div class="jd-modal-body">
         <span id="jd-modal-email-count">0</span> token berhasil disimpan.<br>
         Kirim email akses sekarang ke semua pendaftar dalam batch ini?
+        <div id="jd-modal-email-domain" style="margin-top:12px;padding:10px 12px;border-radius:8px;font-size:12.5px"></div>
       </div>
       <div class="jd-modal-actions">
         <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-email')">Nanti</button>
@@ -1714,7 +1715,12 @@
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
       var label = type === 'new' ? 'generate token baru' : 'reset token & kirim ulang';
-      if (!confirm('Konfirmasi ' + label + ' untuk ' + email + '?')) return;
+      // Tampilkan domain link + env di dialog konfirmasi (jalur ini generate DAN
+      // kirim email sekaligus, jadi salah env = link salah langsung terkirim).
+      var envNote = jdEnv === 'production'
+        ? '\n\nLink email → ' + getAccessDomain() + ' (PRODUCTION)'
+        : '\n\n⚠️ Link email → ' + getAccessDomain() + ' (MASIH STAGING — ganti ke Production dulu kalau untuk customer asli)';
+      if (!confirm('Konfirmasi ' + label + ' untuk ' + email + '?' + envNote)) return;
 
       try {
         showToast(type === 'new' ? 'Membuat token baru...' : 'Mereset token...');
@@ -1862,12 +1868,30 @@
         loadTokens();
 
         document.getElementById('jd-modal-email-count').textContent = lastBatchSent.length;
+        renderEmailDomainPreview();
         openModal('jd-modal-email');
 
       } catch(e) {
         showToast('Gagal simpan token. Coba lagi.', true);
         console.error(e);
       }
+    }
+
+    // Pengaman anti-salah-env: tampilkan domain PERSIS yang akan masuk ke link
+    // email, dibaca live dari getAccessDomain() saat modal dibuka. Kalau masih
+    // di Staging, kotaknya merah + peringatan -- biar operator sadar sebelum
+    // ngirim link beta2 ke customer asli (kejadian nyata yang mau dicegah).
+    function renderEmailDomainPreview() {
+      var box = document.getElementById('jd-modal-email-domain');
+      if (!box) return;
+      var domain = getAccessDomain();
+      var isProd = jdEnv === 'production';
+      box.style.background = isProd ? '#EAF5EF' : '#FBEDEA';
+      box.style.border = '1px solid ' + (isProd ? '#8FBFA3' : '#E4A79E');
+      box.style.color = isProd ? '#2F6F4E' : '#8A3B2E';
+      box.innerHTML = 'Link akan mengarah ke: <strong>' + esc(domain) + '</strong>' +
+        (isProd ? ' <span style="font-weight:600">(PRODUCTION ✓)</span>'
+                : '<br><strong>⚠️ Masih mode STAGING</strong> — kalau ini untuk customer asli, tutup dulu & ganti ke Production di pojok kanan atas.');
     }
 
     // ── SEND EMAILS ──────────────────────────────────────────
