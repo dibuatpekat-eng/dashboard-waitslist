@@ -960,9 +960,9 @@
         var whitelisted = row.review_action === 'whitelisted';
         html += '<tr>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
-          '<td data-label="Nama" style="color:var(--text-2)">' + names + '</td>' +
-          '<td data-label="Alamat" style="color:var(--text-2)">' + (row.address_raw || '—') + '</td>' +
-          '<td data-label="Produk" style="color:var(--text-2)">' + products + '</td>' +
+          '<td data-label="Nama" style="color:var(--text-2)">' + esc(names) + '</td>' +
+          '<td data-label="Alamat" style="color:var(--text-2)">' + esc(row.address_raw || '—') + '</td>' +
+          '<td data-label="Produk" style="color:var(--text-2)">' + esc(products) + '</td>' +
           '<td data-label="Confidence">' + (whitelisted ? '<span class="badge badge-ok">Whitelisted</span>' : '<span class="badge badge-flag">' + (row.confidence || '—') + '</span>') + '</td>' +
           '<td data-label="Terakhir" style="color:var(--text-3);white-space:nowrap">' + fmtDate(row.last_seen_at) + '</td>' +
           '<td data-label="">' + (whitelisted
@@ -1013,11 +1013,11 @@
         '</tr></thead><tbody>';
       result.data.forEach(function(row) {
         html += '<tr>' +
-          '<td data-label="Order #">' + row.order_id + '</td>' +
-          '<td data-label="Produk" style="color:var(--text-2)">' + (row.product_name || '—') + '</td>' +
-          '<td data-label="Email">' + (row.email || '—') + '</td>' +
+          '<td data-label="Order #">' + esc(row.order_id) + '</td>' +
+          '<td data-label="Produk" style="color:var(--text-2)">' + esc(row.product_name || '—') + '</td>' +
+          '<td data-label="Email">' + esc(row.email || '—') + '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
-          '<td data-label="Status"><span class="badge badge-ok">' + row.order_status + '</span></td>' +
+          '<td data-label="Status"><span class="badge badge-ok">' + esc(row.order_status) + '</span></td>' +
           '<td data-label="Tanggal" style="color:var(--text-3);white-space:nowrap">' + fmtDate(row.order_date) + '</td>' +
           '</tr>';
       });
@@ -1186,6 +1186,15 @@
 
     function openModal(id)  { document.getElementById(id).classList.add('show'); }
     function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    // Escape data dari pelanggan (email/nama/alamat/produk) sebelum masuk innerHTML.
+    // Tanpa ini, pendaftar bisa nyisipin <img onerror=...> di alamat/nama dan
+    // script-nya jalan DI BROWSER ADMIN saat buka dashboard (stored XSS).
+    function esc(s) {
+      return (s == null ? '' : String(s)).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+      });
+    }
 
     function fmtDate(iso) {
       if (!iso) return '—';
@@ -1390,7 +1399,7 @@
           } else if (row.already_purchased) {
             rowAccentClass = 'jd-row-bought';
             statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
-            statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + (row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + row.purchased_order_id : '') + '</span>';
+            statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
           } else {
             statusBadge = '<span class="badge badge-ok">Eligible</span>';
             if (row.effective_status === 'expired') {
@@ -1425,8 +1434,8 @@
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
-          '<td data-label="Email">' + (row.email || '—') +
-          ' <button class="jd-btn jd-btn-outline" style="font-size:9px;padding:2px 6px;margin-left:6px" onclick="event.stopPropagation(); openEditModal(\'' + row.id + '\', \'' + (row.email || '').replace(/'/g, "\\'") + '\', \'' + (row.phone || '').replace(/'/g, "\\'") + '\')">Edit</button>' +
+          '<td data-label="Email">' + esc(row.email || '—') +
+          ' <button class="jd-btn jd-btn-outline" style="font-size:9px;padding:2px 6px;margin-left:6px" onclick="event.stopPropagation(); openEditModal(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\', \'' + (row.phone || '').replace(/['\\\\]/g, "\\$&") + '\')">Edit</button>' +
           '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
@@ -1568,9 +1577,45 @@
         };
       });
 
+      // Peringatan alokasi: bandingkan jumlah yang mau diundang per variasi
+      // (produk|warna|size) dengan SISA alokasi (dijumlah lintas batch). Ini
+      // peringatan, bukan blokir keras -- operator masih bisa lanjut (mis. sengaja
+      // over-invite karena tahu ada yang bakal nggak checkout), tapi nggak lagi
+      // over-invite tanpa sadar karena alokasi cuma tampilan pasif.
+      var wantPerVar = {};
+      pendingBatch.forEach(function(t) {
+        var k = t.product + '|' + t.color + '|' + t.size;
+        wantPerVar[k] = (wantPerVar[k] || 0) + 1;
+      });
+      var allocWarnHtml = '';
+      try {
+        var allocRes = await sbQuery('launch_allocation_summary?select=product,color,size,allocated,invited_active,purchased,remaining');
+        var remainByVar = {};
+        (allocRes.data || []).forEach(function(a) {
+          var k = a.product + '|' + a.color + '|' + a.size;
+          var rem = (a.remaining != null) ? a.remaining : ((a.allocated || 0) - (a.invited_active || 0) - (a.purchased || 0));
+          remainByVar[k] = (remainByVar[k] || 0) + rem;
+        });
+        var pMapW = { rhea: 'Rhea', phi: 'Phi' }, cMapW = { breen: 'Breen', auburn: 'Auburn' }, sMapW = { sm: 'S/M', lxl: 'L/XL' };
+        var warnLines = [];
+        Object.keys(wantPerVar).forEach(function(k) {
+          var parts = k.split('|');
+          var label = (pMapW[parts[0]] || parts[0]) + ' ' + (cMapW[parts[1]] || parts[1]) + ' ' + (sMapW[parts[2]] || parts[2]);
+          if (!(k in remainByVar)) {
+            warnLines.push('<strong>' + esc(label) + '</strong>: mengundang ' + wantPerVar[k] + ', <em>belum ada alokasi</em>');
+          } else if (wantPerVar[k] > remainByVar[k]) {
+            warnLines.push('<strong>' + esc(label) + '</strong>: mengundang ' + wantPerVar[k] + ', sisa alokasi cuma ' + remainByVar[k]);
+          }
+        });
+        if (warnLines.length) {
+          allocWarnHtml = '<div style="margin-top:12px;padding:10px 12px;background:#FCF1E3;border:1px solid #E4C48C;border-radius:8px;font-size:12.5px;color:#7A4A0C">' +
+            '⚠️ Melebihi sisa alokasi:<br>' + warnLines.join('<br>') + '<br><span style="color:#9A7A4C">Boleh lanjut, tapi pastikan ini disengaja.</span></div>';
+        }
+      } catch (e) { /* alokasi opsional -- kalau gagal fetch, jangan blokir generate */ }
+
       document.getElementById('jd-modal-batch-body').innerHTML =
         'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' + pendingBatch.length + ' pendaftar yang dipilih.<br>' +
-        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').';
+        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').' + allocWarnHtml;
 
       document.getElementById('jd-modal-token-preview').textContent =
         pendingBatch.map(function(t) { return t.email + ' → ' + t.token; }).join('\n');
@@ -1616,8 +1661,8 @@
           : '<span class="jd-dd-label">' + (row.email || '—') + '</span>' + actionButtons;
 
         return '<tr onclick="jdToggleCard(event, this)">' +
-          '<td data-label="Token"><code style="font-size:11px;letter-spacing:.04em">' + row.token + '</code></td>' +
-          '<td data-label="Email">' + (row.email ? '<a href="javascript:void(0)" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + row.email.replace(/'/g, "\\'") + '\')" style="color:var(--text);text-decoration:underline;text-underline-offset:2px" title="Lihat entry ini di tab Waitlist">' + row.email + '</a>' : '—') + '</td>' +
+          '<td data-label="Token"><code style="font-size:11px;letter-spacing:.04em">' + esc(row.token) + '</code></td>' +
+          '<td data-label="Email">' + (row.email ? '<a href="javascript:void(0)" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + row.email.replace(/['\\\\]/g, "\\$&") + '\')" style="color:var(--text);text-decoration:underline;text-underline-offset:2px" title="Lihat entry ini di tab Waitlist">' + esc(row.email) + '</a>' : '—') + '</td>' +
           '<td data-label="No. HP">' + fmtPhone(row.phone) + '</td>' +
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Dibuat" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
