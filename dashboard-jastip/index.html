@@ -635,11 +635,21 @@ function renderFlags() {
     const bulkItems = g.items.filter(f => f.rule_triggered === 'rule_2_bulk_same_product' || f.rule_triggered === 'rule_5_volume');
     const linkItems = g.items.filter(f => f.rule_triggered !== 'rule_2_bulk_same_product' && f.rule_triggered !== 'rule_5_volume');
 
-    const addrMatches = linkItems.filter(f => /Alamat mirip/i.test(f.detail || ''));
-    const maxAddrSim = addrMatches.reduce((max, f) => {
+    // Dua jenis match alamat, jangan dicampur: match penuh (>=85%) vs heuristik
+    // awal-alamat ("KEMUNGKINAN sama", full <85%). Dulu keduanya lolos filter
+    // /Alamat mirip/ yang sama, dan persen flag-prefix gagal diparse sehingga
+    // jatuh ke nilai awal reduce yang keliru diset 100 -> kartu LOW bisa bilang
+    // "kemiripan tertinggi 100%" padahal aslinya 63%.
+    const fullAddrMatches = linkItems.filter(f => /^Alamat mirip/i.test(f.detail || ''));
+    const prefixAddrMatches = linkItems.filter(f => /KEMUNGKINAN sama/i.test(f.detail || ''));
+    const maxAddrSim = fullAddrMatches.reduce((max, f) => {
       const m = (f.detail || '').match(/\((\d+)%\)/);
       return m ? Math.max(max, +m[1]) : max;
-    }, 100);
+    }, 0);
+    const maxPrefixSim = prefixAddrMatches.reduce((max, f) => {
+      const m = (f.detail || '').match(/awal alamat mirip (\d+)%/i);
+      return m ? Math.max(max, +m[1]) : max;
+    }, 0);
     const dbMatchItem = linkItems.find(f => f.rule_triggered === 'rule_1_db_match');
     // Cuma produk yang beneran match keyword watchlist aktif -- order yang
     // ke-flag sering isinya campur (produk watched + produk biasa dalam 1
@@ -653,7 +663,8 @@ function renderFlags() {
     const reasonLines = [];
     if (g.orders.length > 1 && distinctPhones.size === 1) reasonLines.push(`${g.orders.length} order pakai nomor HP yang sama${namesDiffer ? ', dengan nama penerima berbeda-beda' : ''}`);
     if (g.orders.length > 1 && distinctAddresses.size === 1 && distinctPhones.size > 1) reasonLines.push(`${g.orders.length} order dikirim ke alamat yang sama persis, tapi pakai HP berbeda-beda`);
-    else if (addrMatches.length) reasonLines.push(`Alamat mirip antar-order (kemiripan tertinggi ${maxAddrSim}%)`);
+    else if (fullAddrMatches.length && maxAddrSim > 0) reasonLines.push(`Alamat mirip antar-order (kemiripan tertinggi ${maxAddrSim}%)`);
+    if (prefixAddrMatches.length && maxPrefixSim > 0) reasonLines.push(`Alamat KEMUNGKINAN sama antar-order (awal alamat mirip ${maxPrefixSim}%) — cek manual`);
     if (watchedProducts.length) reasonLines.push(`Produk watched yang dibeli: ${esc(watchedProducts.join(', '))}`);
     if (dbMatchItem) {
       const m = dbMatchItem.matched_suspect || {};
@@ -680,11 +691,42 @@ function renderFlags() {
       </div>
       <div class="match-list">${matchRows}</div>
       <div class="actions">
+        <select class="input" style="font-size:11px;padding:5px 8px" onchange="overrideClusterConfidence(${idx}, this.value)">
+          <option value="">Ubah level…</option>
+          <option value="high" ${conf === 'high' ? 'disabled' : ''}>High</option>
+          <option value="medium" ${conf === 'medium' ? 'disabled' : ''}>Medium</option>
+          <option value="low" ${conf === 'low' ? 'disabled' : ''}>Low</option>
+        </select>
         <button class="btn btn-danger-ghost btn-sm" onclick="openConfirmGroup(${idx})">Confirm Jastip</button>
         <button class="btn btn-ghost btn-sm" onclick="clearGroup(${idx})">Clear</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// Override level (high/medium/low) satu cluster secara manual. Nge-PATCH kolom
+// confidence di SEMUA flag milik cluster itu, jadi efeknya nyata (bukan kosmetik):
+// waitlist cuma nge-gate flag high/medium, jadi nurunin cluster ke LOW = orangnya
+// lolos gating waitlist, naikin LOW ke HIGH = mulai kena gating. Catatan penting:
+// rescan (dipakai saat rules berubah) menghitung ulang semua flag dari rule engine,
+// jadi override manual ikut ke-reset -- itu trade-off yang disadari, bukan bug.
+async function overrideClusterConfidence(idx, level) {
+  if (!level) return;
+  const g = currentGroups[idx];
+  if (!g) return;
+  if (!confirm(`Ubah level cluster ini jadi ${level.toUpperCase()}?\n\nCatatan: level manual akan dihitung ulang oleh sistem kalau nanti ada rescan (perubahan rules).`)) {
+    renderFlags();
+    return;
+  }
+  const ids = g.items.map(f => f.id);
+  try {
+    await sb(`jastip_flags?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ confidence: level }) });
+    // g.items berisi referensi objek yang sama dengan flagData, jadi mutasi ini
+    // langsung kebaca renderFlags tanpa perlu fetch ulang.
+    g.items.forEach(f => { f.confidence = level; });
+    renderFlags();
+    showToast('Level diubah jadi ' + level.toUpperCase());
+  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function clearGroup(idx) {
