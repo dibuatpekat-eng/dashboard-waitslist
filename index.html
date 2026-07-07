@@ -556,39 +556,16 @@
 
         <div id="jd-alloc-collapsible" style="display:none;">
           <!-- FORM TAMBAH ALOKASI (hidden by default) -->
-          <div class="jd-alloc-form" id="jd-alloc-form" style="display:none;">
-            <div class="jd-form-group">
-              <div class="jd-form-label">Batch Label</div>
-              <input type="text" id="jd-alloc-batch" class="jd-alloc-input" placeholder="Batch 1">
+          <div id="jd-alloc-form" style="display:none;padding:16px 20px;background:#FCFBF9;border-bottom:1px solid var(--border)">
+            <div style="max-width:320px;margin-bottom:14px">
+              <div class="jd-form-label">Nama Batch</div>
+              <input type="text" id="jd-alloc-batch" class="jd-alloc-input" placeholder="mis. Drop SS26 — Rilis 1" style="width:100%">
             </div>
-            <div class="jd-form-group">
-              <div class="jd-form-label">Produk</div>
-              <select id="jd-alloc-product" class="jd-alloc-input">
-                <option value="rhea">Rhea Flare Jacket</option>
-                <option value="phi">Phi Jacket</option>
-              </select>
-            </div>
-            <div class="jd-form-group">
-              <div class="jd-form-label">Warna</div>
-              <select id="jd-alloc-color" class="jd-alloc-input">
-                <option value="breen">Breen</option>
-                <option value="auburn">Auburn</option>
-              </select>
-            </div>
-            <div class="jd-form-group">
-              <div class="jd-form-label">Ukuran</div>
-              <select id="jd-alloc-size" class="jd-alloc-input">
-                <option value="sm">S/M</option>
-                <option value="lxl">L/XL</option>
-              </select>
-            </div>
-            <div class="jd-form-group">
-              <div class="jd-form-label">Qty</div>
-              <input type="number" id="jd-alloc-qty" class="jd-alloc-input" placeholder="0" min="1" max="99" style="width:70px">
-            </div>
-            <div class="jd-form-group">
-              <div class="jd-form-label">&nbsp;</div>
-              <button class="jd-btn jd-btn-dark" onclick="saveAllocation()">Simpan</button>
+            <div class="jd-form-label" style="margin-bottom:6px">Isi qty tiap variasi (kosongkan / 0 kalau tidak dialokasi)</div>
+            <div id="jd-alloc-grid" style="display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center;max-width:420px"></div>
+            <div style="margin-top:14px;display:flex;gap:8px">
+              <button class="jd-btn jd-btn-dark" onclick="saveBatch()">Simpan Batch</button>
+              <button class="jd-btn jd-btn-outline" onclick="toggleAllocForm()">Batal</button>
             </div>
           </div>
 
@@ -1938,6 +1915,26 @@
 
     // ── ALOKASI ──────────────────────────────────────────────
     var allocFormOpen = false;
+    // 8 variasi launch (2 produk × 2 warna × 2 size). Satu "batch" = alokasi buat
+    // beberapa/semua variasi ini sekaligus, bukan satu-satu.
+    var ALLOC_VARIANTS = [
+      { product:'rhea', color:'breen',  size:'sm',  label:'Rhea — Breen · S/M' },
+      { product:'rhea', color:'breen',  size:'lxl', label:'Rhea — Breen · L/XL' },
+      { product:'rhea', color:'auburn', size:'sm',  label:'Rhea — Auburn · S/M' },
+      { product:'rhea', color:'auburn', size:'lxl', label:'Rhea — Auburn · L/XL' },
+      { product:'phi',  color:'breen',  size:'sm',  label:'Phi — Breen · S/M' },
+      { product:'phi',  color:'breen',  size:'lxl', label:'Phi — Breen · L/XL' },
+      { product:'phi',  color:'auburn', size:'sm',  label:'Phi — Auburn · S/M' },
+      { product:'phi',  color:'auburn', size:'lxl', label:'Phi — Auburn · L/XL' }
+    ];
+
+    function renderAllocGrid() {
+      var grid = document.getElementById('jd-alloc-grid');
+      grid.innerHTML = ALLOC_VARIANTS.map(function(v, i) {
+        return '<label for="jd-qty-' + i + '" style="font-size:12px;color:var(--text-2)">' + v.label + '</label>' +
+          '<input type="number" id="jd-qty-' + i + '" class="jd-alloc-input" placeholder="0" min="0" max="999" style="width:80px">';
+      }).join('');
+    }
 
     function toggleAllocForm() {
       allocFormOpen = !allocFormOpen;
@@ -1947,8 +1944,9 @@
       if (allocFormOpen) {
         var collapsible = document.getElementById('jd-alloc-collapsible');
         if (collapsible && collapsible.style.display === 'none') toggleAllocSection();
+        renderAllocGrid();
       }
-      document.getElementById('jd-alloc-form').style.display = allocFormOpen ? 'grid' : 'none';
+      document.getElementById('jd-alloc-form').style.display = allocFormOpen ? 'block' : 'none';
       if (allocFormOpen) document.getElementById('jd-alloc-batch').focus();
     }
 
@@ -2000,10 +1998,12 @@
           html += '<div class="jd-alloc-count">' + used + '/' + total + '</div>';
           html += '</div>';
           // Sub-info
-          html += '<div style="display:flex;gap:12px;margin-top:4px">';
+          var expiredBack = row.invited_expired || 0;
+          html += '<div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap">';
           html += '<span style="font-size:10px;color:var(--text-3)">Invited: <strong style="color:var(--text-2)">' + invited + '</strong></span>';
           html += '<span style="font-size:10px;color:var(--text-3)">Beli: <strong style="color:var(--ok)">' + bought + '</strong></span>';
           html += '<span style="font-size:10px;color:var(--text-3)">Sisa: <strong style="color:' + (isFull ? 'var(--flag)' : 'var(--text)') + '">' + remaining + '</strong></span>';
+          if (expiredBack > 0) html += '<span style="font-size:10px;color:var(--warn,#B4620C)" title="Diundang tapi token-nya expired tanpa dipakai — slotnya sudah balik ke Sisa, bisa dikasih ke orang lain">🔄 ' + expiredBack + ' balik dari expired</span>';
           html += '</div>';
           html += '</div>';
           // Delete button
@@ -2016,33 +2016,36 @@
       container.innerHTML = html;
     }
 
-    async function saveAllocation() {
-      var batch   = document.getElementById('jd-alloc-batch').value.trim();
-      var product = document.getElementById('jd-alloc-product').value;
-      var color   = document.getElementById('jd-alloc-color').value;
-      var size    = document.getElementById('jd-alloc-size').value;
-      var qty     = parseInt(document.getElementById('jd-alloc-qty').value);
-
+    // Simpan SATU batch berisi banyak variasi sekaligus. Tiap variasi dengan qty>0
+    // jadi satu baris launch_allocations di bawah batch_label yang sama -- insert
+    // sekali kirim (array), bukan satu-satu.
+    async function saveBatch() {
+      var batch = document.getElementById('jd-alloc-batch').value.trim();
       if (!batch) return showToast('Isi nama batch dulu', true);
-      if (!qty || qty < 1) return showToast('Qty harus minimal 1', true);
+
+      var items = [];
+      ALLOC_VARIANTS.forEach(function(v, i) {
+        var qty = parseInt(document.getElementById('jd-qty-' + i).value);
+        if (qty && qty > 0) {
+          items.push({ batch_label: batch, product: v.product, color: v.color, size: v.size, allocated: qty });
+        }
+      });
+      if (!items.length) return showToast('Isi qty minimal satu variasi', true);
 
       try {
         var res = await fetch(SB_URL + '/rest/v1/launch_allocations', {
           method: 'POST',
           headers: authHeaders({ 'Prefer': 'return=minimal' }),
-          body: JSON.stringify({ batch_label: batch, product: product, color: color, size: size, allocated: qty })
+          body: JSON.stringify(items)
         });
-
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('Insert failed ' + res.status);
 
-        // Reset form
-        document.getElementById('jd-alloc-batch').value = '';
-        document.getElementById('jd-alloc-qty').value = '';
-        showToast('Alokasi disimpan');
+        showToast('Batch "' + batch + '" disimpan (' + items.length + ' variasi)');
+        toggleAllocForm();
         loadAllocations();
       } catch(e) {
-        showToast('Gagal simpan alokasi', true);
+        showToast('Gagal simpan batch', true);
         console.error(e);
       }
     }
