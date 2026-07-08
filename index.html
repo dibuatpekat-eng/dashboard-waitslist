@@ -606,6 +606,7 @@
               <option value="email:asc">Urutkan: Email A-Z</option>
               <option value="status:asc">Urutkan: Status</option>
             </select>
+            <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cek ulang semua pendaftar yang belum diundang terhadap data jastip terkini. Jalankan sebelum kirim batch undangan.">Rescan Jastip</button>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
           </div>
         </div>
@@ -876,9 +877,9 @@
         + '<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;">'
         + '<tr><td style="padding:36px 32px;font-family:Georgia,\'Cormorant Garamond\',serif;">'
         + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:10px;letter-spacing:2px;color:#a3a39a;margin:0 0 20px;text-transform:uppercase;">JEDDA</p>'
-        + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 18px;">Dear Guest,</p>'
+        + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 18px;">Dear Customer,</p>'
         + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 18px;">Thank you for your patience.</p>'
-        + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 8px;">Your reserved access for the <strong style="font-weight:600;color:#111;">' + productLabel + '</strong> in ' + colorLabel + ', ' + sizeLabel + ' is now available.</p>'
+        + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 8px;">Your waitlist invitation for <strong style="font-weight:600;color:#111;">' + productLabel + '</strong> in ' + colorLabel + ', ' + sizeLabel + ' is now ready.</p>'
         + '<p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.8;color:#555;font-weight:300;margin:0 0 26px;">Please use the link below to complete your order.</p>'
         + '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 26px;"><tr><td style="background:#111111;">'
         + '<a href="' + accessLink + '" style="display:block;padding:15px 28px;font-family:Arial,Helvetica,sans-serif;font-size:11.5px;letter-spacing:2px;color:#ffffff;text-decoration:none;">COMPLETE YOUR ORDER</a>'
@@ -1246,8 +1247,8 @@
     async function loadStats() {
       var r = await Promise.all([
         sbQuery('launch_waitlist_view?select=id'),
-        sbQuery('launch_waitlist_view?select=id&effective_status=eq.pending&is_flagged=eq.false&already_purchased=eq.false'),
-        sbQuery('launch_waitlist_view?select=id&or=(is_flagged.eq.true,already_purchased.eq.true)'),
+        sbQuery('launch_waitlist_view?select=id&effective_status=eq.pending&needs_review=eq.false'),
+        sbQuery('launch_waitlist_view?select=id&needs_review=eq.true'),
         // BUG YANG DIPERBAIKI: sebelumnya cuma hitung status=invited persis,
         // padahal begitu orang checkout, status-nya PINDAH ke "purchased" --
         // jadi orang yang justru paling berhasil (checkout) malah gak
@@ -1316,6 +1317,36 @@
     }
 
     // ── WAITLIST ─────────────────────────────────────────────
+    // Rescan: re-evaluasi flag jastip untuk pendaftar yang belum diundang
+    // terhadap data jastip TERKINI. Flag jastip di-set sekali saat entry masuk
+    // (beku), jadi kalau operator baru konfirmasi seseorang jastip belakangan,
+    // entry dia yang telanjur masuk tidak keflag otomatis -- tombol ini yang
+    // nutup celah itu. Dijalankan sebelum kirim batch undangan.
+    async function jdRescanFlags() {
+      var btn = document.getElementById('jd-rescan-btn');
+      var orig = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Rescan...'; }
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/rpc/launch_rescan_waitlist_flags', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: '{}'
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('status ' + res.status);
+        var out = await res.json();
+        var msg = 'Rescan selesai — ' + (out.newly_flagged || 0) + ' entry baru keflag jastip'
+                + (out.cleared ? ', ' + out.cleared + ' flag dibersihkan' : '')
+                + ' (dari ' + (out.changed || 0) + ' perubahan).';
+        showToast(msg, false);
+        loadWaitlist(currentPage);
+      } catch (e) {
+        showToast('Gagal rescan: ' + e.message, true);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+      }
+    }
+
     async function loadWaitlist(page) {
       page = page || 1;
       currentPage = page;
@@ -1332,8 +1363,8 @@
       // nyangkut di 'invited' selamanya walau token-nya udah expired. Milih
       // "Expired" di dropdown ini harus beneran nangkep entry yang begitu.
       if (sf) q += '&effective_status=eq.' + sf;
-      if (cardFlagFilter === 'clean')    q += '&is_flagged=eq.false&already_purchased=eq.false';
-      if (cardFlagFilter === 'review')   q += '&or=(is_flagged.eq.true,already_purchased.eq.true)';
+      if (cardFlagFilter === 'clean')    q += '&needs_review=eq.false';
+      if (cardFlagFilter === 'review')   q += '&needs_review=eq.true';
       if (cardFlagFilter === 'eversent') q += '&effective_status=in.(invited,purchased,expired)';
       if (search) {
         // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
@@ -1380,7 +1411,12 @@
         // apa-apa, token sebelumnya keburu mati" -- jadi orangnya balik
         // actionable lagi (bisa di-generate-in token baru), sama kayak pending.
         var isActionable = (row.effective_status === 'pending' || row.effective_status === 'expired');
-        var eligible = (!row.is_flagged && !row.already_purchased && isActionable) ? '1' : '0';
+        // needs_review (dari view) = ada sinyal jastip/pernah-beli DAN belum
+        // ditandai aman operator. Begitu operator klik "Tandai Aman", sinyal
+        // mentahnya tetap ada tapi needs_review jadi false -> orangnya eligible.
+        var needsReview = row.needs_review === true;
+        var wasSignal   = (row.is_flagged || row.already_purchased);
+        var eligible = (!needsReview && isActionable) ? '1' : '0';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
 
         // Satu badge aja, bukan tumpuk. Selama masih actionable (belum
@@ -1394,17 +1430,23 @@
         var rowAccentClass = '';
         var statusBadge, statusCaption = '';
         if (isActionable) {
-          if (row.is_flagged) {
-            rowAccentClass = 'jd-row-jastip';
-            statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
-            statusCaption = '<span class="jd-flag-detail">Terindikasi jastip</span>';
-          } else if (row.already_purchased) {
-            rowAccentClass = 'jd-row-bought';
-            statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
-            statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
+          if (needsReview) {
+            if (row.is_flagged) {
+              rowAccentClass = 'jd-row-jastip';
+              statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+              statusCaption = '<span class="jd-flag-detail">Terindikasi jastip</span>';
+            } else {
+              rowAccentClass = 'jd-row-bought';
+              statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+              statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
+            }
           } else {
             statusBadge = '<span class="badge badge-ok">Eligible</span>';
-            if (row.effective_status === 'expired') {
+            if (row.review_cleared && wasSignal) {
+              // Ditinjau operator & ditandai aman -- kasih tau + jalan untuk batal.
+              statusCaption = '<span class="jd-flag-detail">Ditandai aman '
+                + '<a href="#" onclick="event.stopPropagation(); jdUnmarkSafe(\'' + row.id + '\'); return false;" style="color:var(--warn,#B4620C);text-decoration:underline;margin-left:2px">batal</a></span>';
+            } else if (row.effective_status === 'expired') {
               statusCaption = '<span class="jd-flag-detail">Token sebelumnya expired — bisa digenerate lagi</span>';
             }
           }
@@ -1414,24 +1456,21 @@
 
         // Checkbox yang disabled tanpa alasan bikin operator bingung "kok gak
         // bisa dicentang". Kasih tau kenapa lewat title (tooltip).
-        var disabledReason = row.is_flagged ? 'Perlu ditinjau dulu (jastip)'
-          : row.already_purchased ? 'Perlu ditinjau dulu (pernah beli produk lain)'
+        var disabledReason = needsReview ? (row.is_flagged ? 'Perlu ditinjau dulu (jastip)' : 'Perlu ditinjau dulu (pernah beli produk lain)')
           : !isActionable ? 'Sudah diproses (' + (STATUS_LABELS[row.effective_status] || row.effective_status) + ')'
           : '';
 
-        // Aksi per-baris: generate token 1 orang tanpa harus centang + scroll
-        // ke atas ke tombol bulk -- bulk-select tetap ada, ini cuma jalan pintas.
-        // Ditaruh SEBARIS sama badge (bukan di bawahnya) biar kolom Status gak
-        // makin tinggi/lebar tanpa perlu.
-        // Flag/pernah-beli itu sinyal buat DITINJAU MANUAL, bukan larangan mutlak --
-        // operator kadang sudah cek sendiri (mis. false positive, atau memang mau
-        // dikasih akses meski kena flag) dan butuh jalan untuk tetap generate token.
-        // Tombol ini beda warna + wajib confirm() supaya tidak kepencet gak sengaja,
-        // dan alasan flag-nya diikutkan di dialog biar operator sadar apa yang di-override.
-        var generateBtn = eligible === '1'
+        // Aksi per-baris (sebaris sama badge biar kolom Status gak makin tinggi):
+        // - Eligible            -> "Generate Token" (jalan pintas generate 1 orang).
+        // - Perlu Ditinjau      -> "Tandai Aman": operator tinjau manual, kalau
+        //   aman (false positive / tetap mau dikasih akses) klik ini -> flag
+        //   dibersihin permanen (review_cleared) -> orangnya jadi Eligible ->
+        //   baru bisa di-generate normal. Sinyal jastip mentahnya tetap tersimpan,
+        //   cuma di-override; rescan pun bakal menghormati keputusan ini.
+        var actionBtn = eligible === '1'
           ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" data-id="' + row.id + '" data-row="' + rowJson + '" onclick="event.stopPropagation(); jdGenerateSingle(this)">Generate Token</button>'
-          : (isActionable ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px;border-color:var(--warn,#B4620C);color:var(--warn,#B4620C)" data-id="' + row.id + '" data-row="' + rowJson + '" data-reason="' + disabledReason.replace(/"/g, '&quot;') + '" onclick="event.stopPropagation(); jdGenerateOverride(this)">Generate Anyway</button>' : '');
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + generateBtn + '</div>' + statusCaption;
+          : (isActionable && needsReview ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px;border-color:var(--warn,#B4620C);color:var(--warn,#B4620C)" data-id="' + row.id + '" data-reason="' + disabledReason.replace(/"/g, '&quot;') + '" data-email="' + (row.email || '').replace(/"/g, '&quot;') + '" onclick="event.stopPropagation(); jdMarkSafe(this)">Tandai Aman</button>' : '');
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -1463,21 +1502,55 @@
       generateSelected();
     }
 
-    // Override untuk baris yang kena flag (jastip / pernah beli) tapi operator
-    // sudah tinjau manual dan tetap mau kasih akses. Reuse jalur generate yang
-    // sama persis (generateSelected) -- gate is_flagged/already_purchased itu
-    // cuma tampilan, backend tidak menolak insert token untuk waitlist_id manapun.
-    function jdGenerateOverride(btn) {
-      var row = JSON.parse(btn.dataset.row);
+    // "Tandai Aman": operator sudah tinjau manual entry yang kena flag
+    // (jastip / pernah beli) dan memutuskan aman (false positive, atau memang
+    // mau dikasih akses). Set review_cleared -> orangnya jadi Eligible dan bisa
+    // di-generate normal. Keputusan ini PERMANEN & dihormati rescan (sinyal
+    // mentah jastip tetap tersimpan di is_flagged, cuma di-override tampilannya).
+    async function jdMarkSafe(btn) {
+      var id     = btn.dataset.id;
       var reason = btn.dataset.reason || 'kena flag';
+      var email  = btn.dataset.email || '(tanpa email)';
       var ok = confirm(
         'Entry ini ditandai: ' + reason + '.\n\n' +
-        (row.email || '(tanpa email)') + ' — tetap generate token untuk orang ini?'
+        email + ' — tandai AMAN? Setelah ini dia jadi Eligible dan bisa dikirimi undangan.'
       );
       if (!ok) return;
-      selectedRows = {};
-      selectedRows[btn.dataset.id] = row;
-      generateSelected();
+      btn.disabled = true;
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + id, {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ review_cleared: true, review_cleared_at: new Date().toISOString() })
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('status ' + res.status);
+        showToast('Ditandai aman — sekarang Eligible.');
+        loadWaitlist(currentPage);
+      } catch (e) {
+        btn.disabled = false;
+        showToast('Gagal menandai aman: ' + e.message, true);
+      }
+    }
+
+    // Batalkan "Tandai Aman" -- kembalikan entry ke Perlu Ditinjau (sinyal
+    // mentahnya balik keliatan lagi). Buat jaga-jaga kalau salah klik / mau
+    // ditinjau ulang.
+    async function jdUnmarkSafe(id) {
+      if (!confirm('Batalkan tanda aman? Entry ini balik jadi "Perlu Ditinjau".')) return;
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + id, {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ review_cleared: false, review_cleared_at: null })
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('status ' + res.status);
+        showToast('Tanda aman dibatalkan.');
+        loadWaitlist(currentPage);
+      } catch (e) {
+        showToast('Gagal membatalkan: ' + e.message, true);
+      }
     }
 
     // ── EDIT ENTRY (email/no. HP salah input) ────────────────
@@ -1808,7 +1881,7 @@
         var emailRes = await fetch(SB_URL + '/functions/v1/send-launch-email', {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({ to: email, subject: 'Your access is now open.', html: html })
+          body: JSON.stringify({ to: email, subject: 'Your Waitlist Access Is Ready', html: html })
         });
         var emailData = await emailRes.json();
 
@@ -1924,7 +1997,7 @@
             headers: authHeaders(),
             body: JSON.stringify({
               to:      t.email,
-              subject: 'Your access is now open.',
+              subject: 'Your Waitlist Access Is Ready',
               html:    html
             })
           });
