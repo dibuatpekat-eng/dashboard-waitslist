@@ -601,10 +601,17 @@
               <option value="expired">Expired</option>
             </select>
             <select id="jd-sort-select" onchange="jdSetWaitlistSortFromSelect(this.value)">
+              <option value="priority:asc">Urutkan: Prioritas aksi</option>
               <option value="registered_at:desc">Urutkan: Terbaru daftar</option>
               <option value="registered_at:asc">Urutkan: Terlama daftar</option>
               <option value="email:asc">Urutkan: Email A-Z</option>
               <option value="status:asc">Urutkan: Status</option>
+            </select>
+            <select id="jd-perpage-select" onchange="jdSetPageSize(this.value)" title="Jumlah entry per halaman">
+              <option value="25">25 / hal</option>
+              <option value="50" selected>50 / hal</option>
+              <option value="100">100 / hal</option>
+              <option value="200">200 / hal</option>
             </select>
             <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cek ulang semua pendaftar yang belum diundang terhadap data jastip terkini. Jalankan sebelum kirim batch undangan.">Rescan Jastip</button>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
@@ -804,7 +811,7 @@
     var SB_URL   = 'https://misrdmmvukdpranxnqjq.supabase.co';
     var SB_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pc3JkbW12dWtkcHJhbnhucWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDI0NDQsImV4cCI6MjA5NjA3ODQ0NH0.vdE181TfoBBwlTPK3lTusaSAnGNABX_DwPvL7A8KK_M';
     // RESEND_KEY tidak disimpan di browser lagi — email dikirim via Supabase Edge Function
-    var PAGE_SIZE = 50;
+    var pageSize = 50;
 
     // ── STATE ────────────────────────────────────────────────
     var currentPage    = 1;
@@ -812,8 +819,10 @@
     var pendingBatch   = [];
     var lastBatchSent  = [];
     var lastBatchHours = 48;
-    // Both tables default to newest-first so behavior is consistent between tabs.
-    var waitlistSort = { col: 'registered_at', dir: 'desc' };
+    // Default waitlist: "prioritas aksi" -- yang butuh aksi (pending/expired) di
+    // atas, invited lalu purchased di bawah (action_rank asc), terbaru duluan di
+    // tiap grup. Bisa dioverride via dropdown sort. Token tab tetap newest-first.
+    var waitlistSort = { col: 'priority', dir: 'asc' };
     var tokenSort    = { col: 'created_at', dir: 'desc' };
     // Diisi cuma lewat klik kartu ringkasan (Eligible / Perlu Ditinjau) -- gak
     // ada dropdown terpisah buat ini, biar gak dobel sama dropdown status.
@@ -1032,6 +1041,10 @@
       var parts = v.split(':');
       waitlistSort.col = parts[0];
       waitlistSort.dir = parts[1];
+      loadWaitlist(1);
+    }
+    function jdSetPageSize(v) {
+      pageSize = parseInt(v) || 50;
       loadWaitlist(1);
     }
     function jdSetTokenSortFromSelect(v) {
@@ -1358,7 +1371,12 @@
 
       var sf = document.getElementById('jd-filter-status').value;
       var search = document.getElementById('jd-search-input').value.trim();
-      var q  = 'launch_waitlist_view?select=*&order=' + waitlistSort.col + '.' + waitlistSort.dir;
+      // "priority" = compound order (butuh-aksi dulu, lalu terbaru daftar);
+      // sort lain = kolom tunggal biasa. Tetap server-side biar jalan sama pagination.
+      var orderClause = waitlistSort.col === 'priority'
+        ? 'action_rank.asc,registered_at.desc'
+        : waitlistSort.col + '.' + waitlistSort.dir;
+      var q  = 'launch_waitlist_view?select=*&order=' + orderClause;
       // Filter by effective_status, bukan status mentah -- soalnya "status" bisa
       // nyangkut di 'invited' selamanya walau token-nya udah expired. Milih
       // "Expired" di dropdown ini harus beneran nangkep entry yang begitu.
@@ -1381,14 +1399,14 @@
         }
       }
 
-      var from = (page - 1) * PAGE_SIZE;
-      var to   = from + PAGE_SIZE - 1;
+      var from = (page - 1) * pageSize;
+      var to   = from + pageSize - 1;
       var result = await sbQuery(q, {
         headers: { 'Prefer': 'count=exact', 'Range': from + '-' + to, 'Range-Unit': 'items' }
       });
 
       totalRows = result.count || 0;
-      var totalPages = Math.ceil(totalRows / PAGE_SIZE);
+      var totalPages = Math.ceil(totalRows / pageSize);
 
       document.getElementById('jd-pagination-info').textContent =
         (from + 1) + '–' + Math.min(to + 1, totalRows) + ' dari ' + totalRows + ' pendaftar';
