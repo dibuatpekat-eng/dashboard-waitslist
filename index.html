@@ -1497,9 +1497,10 @@
     // biar operator gak perlu scroll ke atas buat generate satu token aja.
     function jdGenerateSingle(btn) {
       var row = JSON.parse(btn.dataset.row);
-      selectedRows = {};
-      selectedRows[btn.dataset.id] = row;
-      generateSelected();
+      // Lewatin baris ini langsung sebagai argumen -- JANGAN timpa selectedRows
+      // (kalau modal di-cancel, seleksi sintetik ini bakal nyangkut & kebawa ke
+      // generate berikutnya, padahal gak ada checkbox yang kecentang).
+      generateSelected([row]);
     }
 
     // "Tandai Aman": operator sudah tinjau manual entry yang kena flag
@@ -1614,8 +1615,10 @@
     }
 
     // ── GENERATE SELECTED ────────────────────────────────────
-    async function generateSelected() {
-      var rows  = Object.values(selectedRows);
+    async function generateSelected(explicitRows) {
+      // explicitRows dipakai buat generate 1 baris (jdGenerateSingle) tanpa
+      // ganggu seleksi bulk; kalau kosong, pakai seleksi checkbox biasa.
+      var rows  = explicitRows || Object.values(selectedRows);
       var hours = parseInt(document.getElementById('jd-action-hours').value);
       if (!rows.length) return;
 
@@ -1802,15 +1805,7 @@
           // ── GENERATE TOKEN BARU ──
           tokenToUse = genToken();
 
-          // Hapus token lama
-          var delRes = await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=eq.' + waitlistId, {
-            method: 'DELETE',
-            headers: authHeaders()
-          });
-          if (handleAuthExpired(delRes.status)) return;
-          if (!delRes.ok) throw new Error('Gagal hapus token lama (status ' + delRes.status + ')');
-
-          // Fetch waitlist untuk data lengkap
+          // Fetch waitlist untuk data lengkap (butuh buat isi token)
           var wlRes  = await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId + '&select=*&limit=1', {
             headers: authHeaders()
           });
@@ -1851,6 +1846,15 @@
           if (handleAuthExpired(insRes.status)) return;
           if (!insRes.ok) throw new Error('Gagal insert token baru (status ' + insRes.status + ')');
 
+          // Baru hapus token LAMA (yg bukan token baru ini). Insert-dulu-baru-
+          // hapus: kalau insert gagal, token lama gak keburu ilang -> gak ada
+          // yang nyangkut tanpa token.
+          var delRes = await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=eq.' + waitlistId + '&token=not.in.(' + tokenToUse + ')', {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+          if (handleAuthExpired(delRes.status)) return;
+
         } else {
           // ── RESET TOKEN EXISTING ──
           tokenToUse = currentToken;
@@ -1863,13 +1867,6 @@
           if (handleAuthExpired(resetRes.status)) return;
           if (!resetRes.ok) throw new Error('Gagal reset token (status ' + resetRes.status + ')');
         }
-
-        // Reset waitlist status → invited (kedua opsi)
-        await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId, {
-          method: 'PATCH',
-          headers: authHeaders({ 'Prefer': 'return=minimal' }),
-          body: JSON.stringify({ status: 'invited' })
-        });
 
         // ── KIRIM EMAIL ──
         var accessLink  = getAccessDomain() + '/jacket-access/?token=' + tokenToUse;
@@ -1886,9 +1883,16 @@
         var emailData = await emailRes.json();
 
         if (emailRes.ok && emailData.ok) {
+          // Status -> invited HANYA setelah email sukses -- biar gak nyangkut
+          // "Undangan Terkirim" tanpa email kalau pengiriman gagal.
+          await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + waitlistId, {
+            method: 'PATCH',
+            headers: authHeaders({ 'Prefer': 'return=minimal' }),
+            body: JSON.stringify({ status: 'invited' })
+          });
           showToast('Token ' + (type === 'new' ? 'baru dibuat' : 'direset') + ' & email terkirim ke ' + email);
         } else {
-          showToast('Token berhasil, tapi email gagal terkirim.', true);
+          showToast('Token dibuat, tapi email GAGAL — status tetap pending, bisa dikirim ulang.', true);
         }
 
         loadTokens();
@@ -1907,17 +1911,12 @@
 
       try {
         // launch_tokens gak punya UNIQUE constraint di waitlist_id -- kalau
-        // orang ini udah punya token lama (misal lagi di-generate ulang
-        // setelah expired), insert doang bakal ninggalin token lama nyangkut
-        // jadi baris duplikat. Bersihin dulu token lama punya waitlist_id yg
-        // sama sebelum insert yang baru (aman/no-op buat entry yang
-        // memang belum pernah punya token sama sekali).
-        var idsToClean = pendingBatch.map(function(t) { return t.waitlist_id; });
-        await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=in.(' + idsToClean.join(',') + ')', {
-          method: 'DELETE',
-          headers: authHeaders()
-        });
-
+        // orang ini udah punya token lama (misal lagi di-generate ulang setelah
+        // expired), insert doang bakal ninggalin token lama jadi baris duplikat.
+        // URUTAN: INSERT baru DULU, baru hapus token LAMA (yg bukan token baru
+        // ini). Kalau insert gagal, token lama gak keburu kehapus -> gak ada yang
+        // nyangkut "invited" tanpa token. (Dulu delete duluan: insert gagal =
+        // token lama ilang total.)
         var res = await fetch(SB_URL + '/rest/v1/launch_tokens', {
           method: 'POST',
           headers: authHeaders({ 'Prefer': 'return=minimal' }),
@@ -1926,13 +1925,20 @@
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('Insert failed: ' + res.status);
 
-        var ids = pendingBatch.map(function(t) { return t.waitlist_id; });
-        await fetch(SB_URL + '/rest/v1/launch_waitlist?id=in.(' + ids.join(',') + ')', {
-          method: 'PATCH',
-          headers: authHeaders({ 'Prefer': 'return=minimal' }),
-          body: JSON.stringify({ status: 'invited' })
+        var idsToClean = pendingBatch.map(function(t) { return t.waitlist_id; });
+        var newTokens  = pendingBatch.map(function(t) { return t.token; });
+        await fetch(SB_URL + '/rest/v1/launch_tokens?waitlist_id=in.(' + idsToClean.join(',') + ')&token=not.in.(' + newTokens.join(',') + ')', {
+          method: 'DELETE',
+          headers: authHeaders()
         });
 
+        // JANGAN set status 'invited' di sini. Status pindah ke 'invited' HANYA
+        // setelah email BENERAN kekirim (di sendEmails). Kalau di-set di sini,
+        // operator yang liat caution env di modal email lalu klik "Nanti"/tutup
+        // bakal ninggalin orang berstatus "Undangan Terkirim" padahal email tak
+        // pernah terkirim -> nyangkut, gak bisa dipilih ulang. Token-nya sudah
+        // ada (jadi slot alokasi tetap kehitung dari token), status tetap
+        // 'pending' sampai email sukses.
         lastBatchSent = pendingBatch.slice();
         showToast(pendingBatch.length + ' token berhasil dibuat');
         pendingBatch = [];
@@ -1977,6 +1983,7 @@
       var cMap = { breen: 'Breen', auburn: 'Auburn' };
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
       var sent = 0, failed = 0;
+      var sentIds = [];   // waitlist_id yang emailnya BENERAN sukses -> baru ini yg jadi 'invited'
 
       for (var i = 0; i < lastBatchSent.length; i++) {
         var t = lastBatchSent[i];
@@ -2002,14 +2009,27 @@
             })
           });
           var emailData = await emailRes.json();
-          emailRes.ok && emailData.ok ? sent++ : failed++;
+          if (emailRes.ok && emailData.ok) { sent++; sentIds.push(t.waitlist_id); }
+          else { failed++; }
         } catch(e) { failed++; }
 
         if (i < lastBatchSent.length - 1) await new Promise(function(r) { setTimeout(r, 200); });
       }
 
+      // Status -> 'invited' HANYA untuk yang emailnya sukses. Yang gagal tetap
+      // 'pending' (masih actionable) supaya bisa dikirim ulang, bukan nyangkut.
+      if (sentIds.length) {
+        await fetch(SB_URL + '/rest/v1/launch_waitlist?id=in.(' + sentIds.join(',') + ')', {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ status: 'invited' })
+        });
+      }
+
       lastBatchSent = [];
       showToast(failed === 0 ? sent + ' email berhasil terkirim' : sent + ' terkirim, ' + failed + ' gagal', failed > 0);
+      loadWaitlist(currentPage);
+      loadTokens();
     }
 
     // ── ALOKASI ──────────────────────────────────────────────
@@ -2065,54 +2085,109 @@
       var cMap = { breen: 'Breen', auburn: 'Auburn' };
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
-      // Group by batch_label
-      var batches = {};
-      result.data.forEach(function(row) {
-        var key = row.batch_label || 'Tanpa Batch';
-        if (!batches[key]) batches[key] = [];
-        batches[key].push(row);
+      // ── Agregasi per SKU (varian) lintas batch ──
+      // allocated DIJUMLAH lintas batch. invited_active/purchased/invited_expired
+      // TIDAK dijumlah: view nge-join token per product|color|size (bukan per
+      // batch), jadi tiap baris varian yang sama nilainya identik -> ambil sekali.
+      // (Model per-batch yang lama double-count token kalau 1 varian dialokasi
+      // di >1 batch -- makanya diganti board per-SKU.)
+      var perSku = {};
+      result.data.forEach(function(r) {
+        var k = r.product + '|' + r.color + '|' + r.size;
+        if (!perSku[k]) perSku[k] = { allocated: 0, invited: 0, bought: 0, expiredBack: 0 };
+        perSku[k].allocated  += (r.allocated || 0);
+        perSku[k].invited     = r.invited_active || 0;
+        perSku[k].bought      = r.purchased || 0;
+        perSku[k].expiredBack = r.invited_expired || 0;
       });
 
       var html = '';
-      Object.keys(batches).forEach(function(batchName) {
-        var rows = batches[batchName];
-        html += '<div style="padding:14px 20px 4px;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);border-top:1px solid var(--border)">' + batchName + '</div>';
-        html += '<div class="jd-alloc-grid">';
-        rows.forEach(function(row) {
-          var invited  = row.invited_active || 0;
-          var bought   = row.purchased || 0;
-          var total    = row.allocated || 0;
-          var used     = invited + bought;
-          var pct      = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-          var isFull   = pct >= 100;
-          var remaining = Math.max(0, row.remaining != null ? row.remaining : total - used);
 
-          html += '<div class="jd-alloc-card">';
-          html += '<div class="jd-alloc-label">' + (pMap[row.product] || row.product) + ' — ' + (cMap[row.color] || row.color) + ' ' + (sMap[row.size] || row.size) + '</div>';
-          html += '<div class="jd-alloc-bars">';
-          // Bar: used vs total
+      // ── Board per SKU (8 varian, dikelompokkan per produk) ──
+      ['rhea', 'phi'].forEach(function(prod) {
+        html += '<div style="padding:14px 20px 6px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);border-top:1px solid var(--border)">' + pMap[prod] + '</div>';
+        html += '<div class="jd-alloc-grid">';
+        ALLOC_VARIANTS.filter(function(v) { return v.product === prod; }).forEach(function(v) {
+          var d = perSku[v.product + '|' + v.color + '|' + v.size] || { allocated: 0, invited: 0, bought: 0, expiredBack: 0 };
+          var total = d.allocated, used = d.invited + d.bought;
+          var remaining = Math.max(0, total - used);
+          var pct = total > 0 ? Math.min(100, Math.round(used / total * 100)) : 0;
+          var isFull = total > 0 && remaining === 0;
+
+          html += '<div class="jd-alloc-card"' + (total === 0 ? ' style="opacity:.5"' : '') + '>';
+          html += '<div class="jd-alloc-label">' + (cMap[v.color] || v.color) + ' · ' + (sMap[v.size] || v.size) + '</div>';
+          // Sisa slot -- angka besar (fokus utama)
+          html += '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px">';
+          html += '<span style="font-size:28px;font-weight:600;line-height:1;color:' + (isFull ? 'var(--flag)' : 'var(--text)') + '">' + remaining + '</span>';
+          html += '<span style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">sisa slot</span>';
+          html += '</div>';
+          // Bar terpakai/total
           html += '<div class="jd-alloc-bar-row">';
-          html += '<div class="jd-alloc-bar-label" style="color:var(--text-2);font-size:11px">Terpakai</div>';
           html += '<div class="jd-alloc-bar-track"><div class="jd-alloc-bar-fill' + (isFull ? ' full' : '') + '" style="width:' + pct + '%"></div></div>';
           html += '<div class="jd-alloc-count">' + used + '/' + total + '</div>';
           html += '</div>';
           // Sub-info
-          var expiredBack = row.invited_expired || 0;
-          html += '<div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap">';
-          html += '<span style="font-size:10px;color:var(--text-3)">Invited: <strong style="color:var(--text-2)">' + invited + '</strong></span>';
-          html += '<span style="font-size:10px;color:var(--text-3)">Beli: <strong style="color:var(--ok)">' + bought + '</strong></span>';
-          html += '<span style="font-size:10px;color:var(--text-3)">Sisa: <strong style="color:' + (isFull ? 'var(--flag)' : 'var(--text)') + '">' + remaining + '</strong></span>';
-          if (expiredBack > 0) html += '<span style="font-size:10px;color:var(--warn,#B4620C)" title="Diundang tapi token-nya expired tanpa dipakai — slotnya sudah balik ke Sisa, bisa dikasih ke orang lain">🔄 ' + expiredBack + ' balik dari expired</span>';
+          html += '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">';
+          html += '<span style="font-size:10px;color:var(--text-3)">Invited: <strong style="color:var(--text-2)">' + d.invited + '</strong></span>';
+          html += '<span style="font-size:10px;color:var(--text-3)">Beli: <strong style="color:var(--ok)">' + d.bought + '</strong></span>';
+          if (d.expiredBack > 0) html += '<span style="font-size:10px;color:var(--warn,#B4620C)" title="Token expired tanpa dipakai — slot balik ke sisa">🔄 ' + d.expiredBack + '</span>';
           html += '</div>';
-          html += '</div>';
-          // Delete button
-          html += '<div style="margin-top:10px"><button onclick="deleteAllocation(\'' + row.id + '\')" style="font-family:Jost,sans-serif;font-size:9px;letter-spacing:.08em;text-transform:uppercase;background:none;border:none;color:var(--text-3);cursor:pointer;padding:0;transition:color .15s" onmouseover="this.style.color=\'var(--flag)\'" onmouseout="this.style.color=\'var(--text-3)\'">Hapus</button></div>';
           html += '</div>';
         });
         html += '</div>';
       });
 
+      // ── Riwayat Batch (log, collapsible) -- detail per batch pindah ke sini ──
+      var batches = {};
+      result.data.forEach(function(r) {
+        var key = r.batch_label || 'Tanpa Batch';
+        if (!batches[key]) batches[key] = { items: [], created_at: r.created_at };
+        batches[key].items.push(r);
+        if (r.created_at < batches[key].created_at) batches[key].created_at = r.created_at;
+      });
+      var batchKeys = Object.keys(batches);
+      html += '<div style="border-top:1px solid var(--border);margin-top:2px">';
+      html += '<button id="jd-batch-hist-toggle" data-count="' + batchKeys.length + '" onclick="jdToggleBatchHistory()" style="width:100%;text-align:left;padding:12px 20px;background:none;border:none;cursor:pointer;font-family:Jost,sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3)">▸ Riwayat Batch (' + batchKeys.length + ')</button>';
+      html += '<div id="jd-batch-hist" style="display:none">';
+      batchKeys.forEach(function(bn) {
+        var b = batches[bn];
+        var parts = b.items.map(function(r) { return (pMap[r.product] || r.product) + ' ' + (cMap[r.color] || r.color) + ' ' + (sMap[r.size] || r.size) + ' +' + (r.allocated || 0); });
+        html += '<div style="padding:10px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">';
+        html += '<div><div style="font-size:12px;color:var(--text);font-weight:500">' + esc(bn) + '</div>';
+        html += '<div style="font-size:10px;color:var(--text-3);margin-top:2px">' + fmtDate(b.created_at) + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-2);margin-top:4px">' + parts.map(esc).join(' · ') + '</div></div>';
+        html += '<button onclick="deleteAllocationBatch(\'' + bn.replace(/['\\\\]/g, "\\$&") + '\')" style="font-family:Jost,sans-serif;font-size:9px;letter-spacing:.08em;text-transform:uppercase;background:none;border:none;color:var(--text-3);cursor:pointer;padding:0;white-space:nowrap;transition:color .15s" onmouseover="this.style.color=\'var(--flag)\'" onmouseout="this.style.color=\'var(--text-3)\'">Hapus batch</button>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+
       container.innerHTML = html;
+    }
+
+    function jdToggleBatchHistory() {
+      var el  = document.getElementById('jd-batch-hist');
+      var tog = document.getElementById('jd-batch-hist-toggle');
+      if (!el || !tog) return;
+      var open = el.style.display === 'none';
+      el.style.display = open ? 'block' : 'none';
+      tog.textContent = (open ? '▾ ' : '▸ ') + 'Riwayat Batch (' + tog.dataset.count + ')';
+    }
+
+    // Hapus SELURUH batch (semua baris alokasi dengan batch_label yang sama).
+    async function deleteAllocationBatch(label) {
+      if (!confirm('Hapus SELURUH batch "' + label + '"? Semua slot alokasi dari batch ini akan dihapus.')) return;
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_allocations?batch_label=eq.' + encodeURIComponent(label), {
+          method: 'DELETE',
+          headers: authHeaders({ 'Prefer': 'return=minimal' })
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('Delete failed');
+        showToast('Batch "' + label + '" dihapus');
+        loadAllocations();
+      } catch(e) {
+        showToast('Gagal hapus batch', true);
+      }
     }
 
     // Simpan SATU batch berisi banyak variasi sekaligus. Tiap variasi dengan qty>0
