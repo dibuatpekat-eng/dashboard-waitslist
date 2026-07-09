@@ -253,6 +253,7 @@
   <div class="nav">
     <button class="active" data-page="flags" onclick="goPage('flags', this)">Flags</button>
     <button data-page="suspects" onclick="goPage('suspects', this)">Database Jastip</button>
+    <button data-page="yuwa" onclick="goPage('yuwa', this)">Yuwa</button>
     <button data-page="watched" onclick="goPage('watched', this)">Watched Products</button>
   </div>
 </div>
@@ -293,6 +294,27 @@
 
     <div class="card" id="flagsList"></div>
     <div class="toolbar" style="justify-content:center" id="flagPagination"></div>
+  </div>
+
+  <!-- YUWA -->
+  <div class="page" id="page-yuwa">
+    <div class="page-head">
+      <div>
+        <p class="page-title">Yuwa — perlu refund</p>
+        <p class="page-desc">Pembeli Yuwa yang tidak wajar (≥2 unit per HP) ATAU yang sudah ada di database jastip. TERPISAH dari database jastip — beli Yuwa saja tidak bikin orang jadi jastip.</p>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="yuwaStatPeople">–</div><div class="l">Orang perlu refund</div></div>
+      <div class="stat hi"><div class="n" id="yuwaStatQty">–</div><div class="l">Karena ≥2 unit</div></div>
+      <div class="stat med"><div class="n" id="yuwaStatDb">–</div><div class="l">Karena di database jastip</div></div>
+    </div>
+    <div class="toolbar">
+      <input class="input" style="width:280px" id="yuwaSearch" placeholder="Cari nama / HP / email…" oninput="renderYuwa()">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="loadYuwa()">↻ Refresh</button>
+    </div>
+    <div class="card" id="yuwaList"></div>
   </div>
 
   <!-- SUSPECTS -->
@@ -408,6 +430,7 @@ function goPage(name, btn) {
   btn.classList.add('active');
   if (name === 'flags') loadFlags();
   if (name === 'suspects') loadSuspects();
+  if (name === 'yuwa') loadYuwa();
   if (name === 'watched') loadWatched();
 }
 
@@ -1039,6 +1062,67 @@ async function doAddManualSuspect() {
     loadSuspects();
     showToast('Tersimpan');
   } catch(e) { showToast('Error: ' + e.message); }
+}
+
+// ============================================================
+// YUWA — perlu refund (terpisah dari database jastip)
+// ============================================================
+let yuwaData = [];
+async function loadYuwa() {
+  const el = document.getElementById('yuwaList');
+  el.innerHTML = '<div class="empty"><p>Memuat…</p></div>';
+  try {
+    yuwaData = await sb('yuwa_refund_view?needs_refund=eq.true&order=order_date.desc');
+    renderYuwa();
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><p>Error: ' + esc(e.message) + '</p></div>';
+  }
+}
+
+function renderYuwa() {
+  const q = (document.getElementById('yuwaSearch')?.value || '').trim().toLowerCase();
+  let rows = yuwaData.slice();
+  if (q) rows = rows.filter(r => ((r.recipient_name||'') + ' ' + (r.phone||'') + ' ' + (r.email||'')).toLowerCase().includes(q));
+
+  // group per orang (HP -> email -> order_no sebagai fallback)
+  const groups = {};
+  rows.forEach(r => {
+    const key = r.phone_normalized || r.email_normalized || r.order_no;
+    (groups[key] = groups[key] || []).push(r);
+  });
+  const keys = Object.keys(groups);
+
+  // stat: hitung dari data penuh (bukan hasil search)
+  const allGroups = {};
+  yuwaData.forEach(r => { const k = r.phone_normalized || r.email_normalized || r.order_no; (allGroups[k] = allGroups[k] || []).push(r); });
+  let byQty = 0, byDb = 0;
+  Object.values(allGroups).forEach(g => {
+    const tot = g[0].total_yuwa_by_phone || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
+    const inDb = g.some(r => r.in_jastip_db);
+    if (tot >= 2) byQty++; else if (inDb) byDb++;
+  });
+  document.getElementById('yuwaStatPeople').textContent = Object.keys(allGroups).length;
+  document.getElementById('yuwaStatQty').textContent = byQty;
+  document.getElementById('yuwaStatDb').textContent = byDb;
+
+  const el = document.getElementById('yuwaList');
+  if (!keys.length) { el.innerHTML = '<div class="empty"><span class="glyph">✓</span><p>Belum ada yang perlu refund.</p></div>'; return; }
+
+  el.innerHTML = keys.map(k => {
+    const g = groups[k];
+    const first = g[0];
+    const totalQty = first.total_yuwa_by_phone || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
+    const inDb = g.some(r => r.in_jastip_db);
+    const reasons = [];
+    if (totalQty >= 2) reasons.push('<span class="badge high">' + totalQty + ' pcs Yuwa</span>');
+    if (inDb) reasons.push('<span class="badge medium">Ada di database jastip</span>');
+    const orders = g.map(r => '<span class="tag">#' + esc(String(r.order_no)) + ' · ' + (r.yuwa_qty||0) + ' pcs · ' + esc(r.order_status||'-') + '</span>').join(' ');
+    return '<div class="flag-item">' +
+      '<div class="flag-top"><div class="flag-why"><b>' + esc(first.recipient_name || '—') + '</b></div><div>' + reasons.join(' ') + '</div></div>' +
+      '<div class="co-field">HP: ' + esc(first.phone || '—') + (first.email ? (' · ' + esc(first.email)) : '') + '</div>' +
+      '<div style="margin-top:8px" class="tag-list">' + orders + '</div>' +
+      '</div>';
+  }).join('');
 }
 
 // ============================================================
