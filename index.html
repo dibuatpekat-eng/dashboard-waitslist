@@ -1063,7 +1063,8 @@
     }
 
     function switchTab(name) {
-      ['waitlist', 'tokens', 'jastip'].forEach(function(t) {
+      // Tab 'jastip' (Database Jastip) sudah dihapus -> cukup waitlist & tokens.
+      ['waitlist', 'tokens'].forEach(function(t) {
         document.getElementById('jd-tab-panel-' + t).classList.toggle('active', t === name);
         document.getElementById('jd-tab-btn-' + t).classList.toggle('active', t === name);
       });
@@ -1072,7 +1073,6 @@
       // ada 2 set angka yang beda utk hal yang sama.
       var mainStats = document.getElementById('jd-main-stats');
       if (mainStats) mainStats.style.display = (name === 'waitlist') ? '' : 'none';
-      if (name === 'jastip' && !jdJastipLoaded) { jdJastipLoaded = true; loadJastipSuspects(); }
     }
 
     // Klik kartu ringkasan -> filter tabel Waitlist sesuai kartu yg diklik.
