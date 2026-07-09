@@ -650,15 +650,6 @@
         <div id="jd-action-bar" style="display:none;padding:12px 20px;background:var(--text);color:#F7F6F4;display:none;align-items:center;justify-content:space-between;gap:12px;">
           <div style="display:flex;align-items:center;gap:16px;">
             <span style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;" id="jd-action-count">0 dipilih</span>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.6">Berlaku</span>
-              <select id="jd-action-hours" style="font-size:11px;padding:4px 8px;background:#2A2927;color:#F7F6F4;border:1px solid #3A3937;border-radius:0;">
-                <option value="24">24 jam</option>
-                <option value="48" selected>48 jam</option>
-                <option value="72">72 jam</option>
-                <option value="168">7 hari</option>
-              </select>
-            </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <button class="jd-btn" style="background:transparent;color:#F7F6F4;border:1px solid rgba(255,255,255,0.3);font-size:11px;" onclick="clearSelection()">Batal</button>
@@ -1586,7 +1577,8 @@
         // Tanda operator (Shortlist / Aware) -- inline sebaris badge+aksi, terpisah
         // dari status/flag jastip. Klik toggle: klik tanda yang sama = lepas.
         var mk = row.mark || '';
-        var markHtml = '<span class="jd-mark-row" data-mid="' + row.id + '">' + jdMarkBtns(row.id, mk) + '</span>';
+        // Tanda cuma di baris yang masih actionable (belum diproses) -- biar fokus.
+        var markHtml = isActionable ? '<span class="jd-mark-row" data-mid="' + row.id + '">' + jdMarkBtns(row.id, mk) + '</span>' : '';
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
@@ -1759,7 +1751,7 @@
       // explicitRows dipakai buat generate 1 baris (jdGenerateSingle) tanpa
       // ganggu seleksi bulk; kalau kosong, pakai seleksi checkbox biasa.
       var rows  = explicitRows || Object.values(selectedRows);
-      var hours = parseInt(document.getElementById('jd-action-hours').value);
+      var hours = 48; // default; bisa diganti di modal konfirmasi
       if (!rows.length) return;
 
       lastBatchHours = hours;
@@ -1881,7 +1873,8 @@
         // sama-sama ngirim email baru, manfaat itu gak kepakai di praktiknya.
         // "Generate baru" lebih aman (selalu refresh private_variation_id).
         var actionButtons =
-          '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>';
+          '<button onclick="jdCopyLink(\'' + row.token + '\')">Salin link akses</button>'
+          + '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>';
         // Blokir manual: kalau ada yang share/salahgunain token, expired-kan
         // langsung -> link mati. Cuma buat token yang masih aktif (belum dipakai
         // & belum expired).
@@ -1936,6 +1929,23 @@
       }
     });
 
+    // Salin link akses token ke clipboard (buat kirim ulang manual via WA dll).
+    function jdCopyLink(token) {
+      document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+      var link = getAccessDomain() + '/jacket-access/?token=' + token;
+      var done = function() { showToast('Link akses disalin.'); };
+      var fail = function() {
+        // Fallback kalau clipboard API diblokir
+        var ta = document.createElement('textarea');
+        ta.value = link; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); showToast('Link akses disalin.'); }
+        catch (e) { showToast('Gagal menyalin — link: ' + link, true); }
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, fail);
+      else fail();
+    }
+
     // Blokir token manual: set expires_at ke masa lalu -> gate produk langsung
     // nolak link-nya. Orangnya balik ke status "Expired" (bisa dikirim ulang /
     // ditandai). Nggak dihapus supaya jejaknya tetap ada.
@@ -1960,7 +1970,7 @@
     async function tokenAction(type, waitlistId, currentToken, email, product, color, size) {
       document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
 
-      var hours     = parseInt(document.getElementById('jd-action-hours').value) || 48;
+      var hours     = 48; // "Generate token baru" dari tab Token Aktif -> default 48 jam
       var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
       var tokenToUse;
 
