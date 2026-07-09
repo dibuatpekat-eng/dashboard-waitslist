@@ -785,6 +785,16 @@
     <div class="jd-modal">
       <div class="jd-modal-title">Konfirmasi Generate Token</div>
       <div class="jd-modal-body" id="jd-modal-batch-body">—</div>
+      <div style="padding:2px 22px 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px">
+        <span style="color:var(--text-2)">Token berlaku:</span>
+        <select id="jd-modal-hours" onchange="jdUpdateModalExpiry()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:5px 10px;outline:none;border-radius:0">
+          <option value="24">24 jam</option>
+          <option value="48">48 jam</option>
+          <option value="72">72 jam</option>
+          <option value="168">7 hari</option>
+        </select>
+        <span id="jd-modal-expiry-hint" style="color:var(--text-3);font-size:11.5px"></span>
+      </div>
       <div class="jd-token-list" id="jd-modal-token-preview"></div>
       <div class="jd-modal-actions">
         <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-batch')">Batal</button>
@@ -862,6 +872,12 @@
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
       aware: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>'
     };
+    // 2 tombol tanda utk satu baris (dipakai render awal + update in-place).
+    function jdMarkBtns(id, mk) {
+      mk = mk || '';
+      return '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on-star' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
+        + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on-aware' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>';
+    }
 
     // Satu dropdown gabungan (Tahap + Tanda). Nilai berbentuk "stage:x" / "mark:x".
     function jdApplyFilter(v) {
@@ -1570,10 +1586,7 @@
         // Tanda operator (Shortlist / Aware) -- inline sebaris badge+aksi, terpisah
         // dari status/flag jastip. Klik toggle: klik tanda yang sama = lepas.
         var mk = row.mark || '';
-        var markHtml = '<span class="jd-mark-row">'
-          + '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on-star' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
-          + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on-aware' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>'
-          + '</span>';
+        var markHtml = '<span class="jd-mark-row" data-mid="' + row.id + '">' + jdMarkBtns(row.id, mk) + '</span>';
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
@@ -1670,8 +1683,12 @@
         });
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('status ' + res.status);
-        showToast(target ? ('Ditandai: ' + (target === 'shortlisted' ? 'Shortlisted ⭐' : 'Aware ⚠️')) : 'Tanda dilepas');
-        loadWaitlist(currentPage);
+        // Update HANYA baris ini (jangan reload -> biar gak loncat ke atas).
+        var cell = document.querySelector('.jd-mark-row[data-mid="' + id + '"]');
+        if (cell) cell.innerHTML = jdMarkBtns(id, target);
+        showToast(target ? ('Ditandai: ' + (target === 'shortlisted' ? 'Shortlist' : 'Aware')) : 'Tanda dilepas');
+        // Kalau lagi difilter berdasarkan tanda, baris mungkin gak cocok lagi -> reload.
+        if (markFilter) loadWaitlist(currentPage);
       } catch (e) {
         showToast('Gagal menandai: ' + e.message, true);
       }
@@ -1815,13 +1832,25 @@
       } catch (e) { /* alokasi opsional -- kalau gagal fetch, jangan blokir generate */ }
 
       document.getElementById('jd-modal-batch-body').innerHTML =
-        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' + pendingBatch.length + ' pendaftar yang dipilih.<br>' +
-        'Token aktif selama <strong>' + hours + ' jam</strong> (expires ' + fmtDate(expiresAt) + ').' + allocWarnHtml;
+        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' + pendingBatch.length + ' pendaftar yang dipilih.' + allocWarnHtml;
+
+      // Pilih waktu berlaku di modal (single & batch sama-sama bisa) -- default
+      // ambil dari dropdown action-bar (kalau bulk) atau 48 jam.
+      document.getElementById('jd-modal-hours').value = String(hours || 48);
+      jdUpdateModalExpiry();
 
       document.getElementById('jd-modal-token-preview').textContent =
         pendingBatch.map(function(t) { return t.email + ' → ' + t.token; }).join('\n');
 
       openModal('jd-modal-batch');
+    }
+
+    // Update hint "expires ..." live saat dropdown jam di modal diubah.
+    function jdUpdateModalExpiry() {
+      var hours = parseInt(document.getElementById('jd-modal-hours').value) || 48;
+      var exp = new Date(Date.now() + hours * 3600000);
+      var hint = document.getElementById('jd-modal-expiry-hint');
+      if (hint) hint.textContent = 'expired ' + fmtDate(exp.toISOString());
     }
     async function loadTokens() {
       renderSortIndicators('jd-sort-ind-tok-', tokenSort, ['email', 'created_at', 'expires_at']);
@@ -2055,6 +2084,11 @@
 
     async function confirmBatch() {
       if (!pendingBatch.length) return;
+      // Waktu berlaku diambil dari dropdown di modal (bisa diubah sebelum konfirmasi).
+      var mh = parseInt(document.getElementById('jd-modal-hours').value) || 48;
+      lastBatchHours = mh;
+      var expAt = new Date(Date.now() + mh * 3600000).toISOString();
+      pendingBatch.forEach(function(t) { t.expires_at = expAt; });
       closeModal('jd-modal-batch');
       showToast('Menyimpan token...');
 
@@ -2416,7 +2450,8 @@
       if (!all.length) return showToast('Tidak ada pendaftar untuk diexport', true);
 
       function csvField(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
-      var header = ['email','no_hp','produk','warna','ukuran','status','pernah_beli','flag_jastip','tanggal_daftar'];
+      var MK = { shortlisted: 'Shortlist', aware: 'Aware' };
+      var header = ['email','no_hp','produk','warna','ukuran','status','tanda','pernah_beli','flag_jastip','tanggal_daftar'];
       var rows = all.map(function(r) {
         return [
           r.email, r.phone,
@@ -2424,6 +2459,7 @@
           cMap[r.color] || r.color || '',
           sMap[r.size] || r.size || '',
           STATUS[r.effective_status] || r.effective_status || '',
+          MK[r.mark] || '',
           r.already_purchased ? ('Ya' + (r.purchased_product_name ? ' (' + r.purchased_product_name + ')' : '')) : '',
           r.is_flagged ? 'Ya' : '',
           r.registered_at || ''
