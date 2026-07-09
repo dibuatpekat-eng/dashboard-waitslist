@@ -267,11 +267,12 @@
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
     .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
-    /* Tanda operator (Shortlist / Aware) -- minimalis, monokrom, inline */
-    .jd-mark-row { display: inline-flex; align-items: center; gap: 6px; }
-    .jd-mark-btn { font-family: 'Jost', sans-serif; font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+    /* Tanda operator (Shortlist / Aware) -- icon minimalis monokrom, inline */
+    .jd-mark-row { display: inline-flex; align-items: center; gap: 5px; }
+    .jd-mark-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 23px; padding: 0;
       border: 1px solid var(--border-strong); background: transparent; color: var(--text-3);
-      border-radius: 3px; padding: 3px 9px; cursor: pointer; transition: .12s; white-space: nowrap; }
+      border-radius: 4px; cursor: pointer; transition: .12s; }
+    .jd-mark-btn svg { width: 13px; height: 13px; display: block; }
     .jd-mark-btn:hover { color: var(--text); border-color: var(--text-2); }
     .jd-mark-btn.on { background: var(--text); border-color: var(--text); color: #F7F6F4; }
     .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
@@ -546,6 +547,22 @@
           <div class="jd-stat-label">Total Diundang</div>
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
           <div style="font-size:10px;color:var(--text-3);margin-top:4px" id="jd-stat-conversion"></div>
+        </div>
+      </div>
+
+      <!-- DEMAND PER VARIAN -->
+      <div class="jd-section" id="jd-demand-section">
+        <div class="jd-section-header jd-section-header-toggle" onclick="toggleDemandSection()">
+          <span class="jd-section-title">
+            <span class="jd-chevron" id="jd-demand-chevron">▸</span>
+            Demand per Varian
+          </span>
+          <div class="jd-controls" onclick="event.stopPropagation()">
+            <button class="jd-btn jd-btn-outline" onclick="loadDemand()">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="jd-demand-collapsible" style="display:none;">
+          <div id="jd-demand-body" style="padding:16px 20px"></div>
         </div>
       </div>
 
@@ -843,6 +860,11 @@
     var cardFlagFilter = '';
     var markFilter = '';          // '' | 'shortlisted' | 'aware' | 'none'
     var waitlistStageFilter = ''; // '' | pending | invited | purchased | expired
+    // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
+    var MARK_ICON = {
+      shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
+      aware: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>'
+    };
 
     // Satu dropdown gabungan (Tahap + Tanda). Nilai berbentuk "stage:x" / "mark:x".
     function jdApplyFilter(v) {
@@ -945,6 +967,55 @@
       var isOpen = body.style.display !== 'none';
       body.style.display = isOpen ? 'none' : 'block';
       chevron.classList.toggle('open', !isOpen);
+    }
+
+    var jdDemandLoaded = false;
+    function toggleDemandSection() {
+      var body = document.getElementById('jd-demand-collapsible');
+      var chevron = document.getElementById('jd-demand-chevron');
+      var isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      chevron.classList.toggle('open', !isOpen);
+      if (!isOpen && !jdDemandLoaded) { jdDemandLoaded = true; loadDemand(); }
+    }
+
+    // Demand per varian -- bantu perencanaan produksi. "Bersih" = tanpa flag jastip.
+    async function loadDemand() {
+      var el = document.getElementById('jd-demand-body');
+      el.innerHTML = '<div class="jd-loading">Memuat...</div>';
+      var res = await sbQuery('launch_demand_by_variant?select=*');
+      var rows = res.data || [];
+      var pMap = { rhea: 'Rhea', phi: 'Phi' }, cMap = { breen: 'Breen', auburn: 'Auburn' }, sMap = { sm: 'S/M', lxl: 'L/XL' };
+      var cOrd = ['breen', 'auburn'], sOrd = ['sm', 'lxl'];
+      var html = '';
+      var grand = 0, grandClean = 0;
+      ['rhea', 'phi'].forEach(function(prod) {
+        var pr = rows.filter(function(r) { return r.product === prod; })
+          .sort(function(a, b) { return (cOrd.indexOf(a.color) - cOrd.indexOf(b.color)) || (sOrd.indexOf(a.size) - sOrd.indexOf(b.size)); });
+        if (!pr.length) return;
+        var sub = pr.reduce(function(s, r) { return s + r.total; }, 0);
+        var subC = pr.reduce(function(s, r) { return s + r.clean; }, 0);
+        var max = Math.max.apply(null, pr.map(function(r) { return r.total; }).concat([1]));
+        grand += sub; grandClean += subC;
+        html += '<div style="margin-bottom:18px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
+          + '<span style="font-size:13px;font-weight:500;letter-spacing:.02em">' + pMap[prod] + '</span>'
+          + '<span style="font-size:11px;color:var(--text-3)">total <strong style="color:var(--text)">' + sub + '</strong> · bersih ' + subC + '</span></div>';
+        pr.forEach(function(r) {
+          var pct = Math.round(r.total / max * 100);
+          html += '<div style="display:grid;grid-template-columns:120px 1fr 92px;align-items:center;gap:12px;padding:3px 0">'
+            + '<span style="font-size:12px;color:var(--text-2)">' + (cMap[r.color] || r.color) + ' ' + (sMap[r.size] || r.size) + '</span>'
+            + '<span style="height:6px;background:var(--border);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + pct + '%;background:var(--text)"></span></span>'
+            + '<span style="font-size:12px;text-align:right"><strong>' + r.total + '</strong> <span style="color:var(--text-3)">(' + r.clean + ')</span></span>'
+            + '</div>';
+        });
+        html += '</div>';
+      });
+      html += '<div style="border-top:1px solid var(--border);padding-top:10px;font-size:12px;display:flex;justify-content:space-between">'
+        + '<span style="color:var(--text-3)">TOTAL semua varian</span>'
+        + '<span><strong>' + grand + '</strong> · bersih ' + grandClean + '</span></div>'
+        + '<div style="font-size:10px;color:var(--text-3);margin-top:6px">Angka: total pendaftar (dalam kurung = bersih, tanpa flag jastip).</div>';
+      el.innerHTML = html;
     }
 
     var jdJastipLoaded = false;
@@ -1521,8 +1592,8 @@
         // dari status/flag jastip. Klik toggle: klik tanda yang sama = lepas.
         var mk = row.mark || '';
         var markHtml = '<span class="jd-mark-row">'
-          + '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on' : '') + '" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'shortlisted\',\'' + mk + '\')">Shortlist</button>'
-          + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on' : '') + '" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'aware\',\'' + mk + '\')">Aware</button>'
+          + '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
+          + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>'
           + '</span>';
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + markHtml + '</div>' + statusCaption;
 
