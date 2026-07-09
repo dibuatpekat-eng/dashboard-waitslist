@@ -15,7 +15,7 @@
       --flag: #C0392B; --flag-bg: #FDF2F1; --flag-border: #F5C6C2;
       --ok: #1A6B3C; --ok-bg: #F0FAF4; --ok-border: #A8DFC0;
       --warn: #7D5A00; --warn-bg: #FDF8EC; --warn-border: #EDD98A;
-      --bought: #B15400; --bought-bg: #FDF1E4; --bought-border: #F0C393;
+      --bought: #1D4ED8; --bought-bg: #EEF3FE; --bought-border: #BFD4F7;
     }
 
     body {
@@ -580,7 +580,7 @@
       <div class="jd-tabs">
         <button class="jd-tab active" id="jd-tab-btn-waitlist" onclick="switchTab('waitlist')">Waitlist</button>
         <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
-        <button class="jd-tab" id="jd-tab-btn-jastip" onclick="switchTab('jastip')">Database Jastip</button>
+        <a class="jd-tab" href="https://dashboard-jastip.vercel.app" target="_blank" rel="noopener" title="Buka Dashboard Jastip di tab baru untuk cek manual" style="text-decoration:none">Dashboard Jastip&nbsp;↗</a>
       </div>
 
       <!-- WAITLIST -->
@@ -1451,11 +1451,11 @@
           if (needsReview) {
             if (row.is_flagged) {
               rowAccentClass = 'jd-row-jastip';
-              statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+              statusBadge = '<span class="badge badge-flag">Perlu Ditinjau</span>';
               statusCaption = '<span class="jd-flag-detail">Terindikasi jastip</span>';
             } else {
               rowAccentClass = 'jd-row-bought';
-              statusBadge = '<span class="badge badge-review">Perlu Ditinjau</span>';
+              statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
               statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
             }
           } else {
@@ -2259,36 +2259,53 @@
     }
 
     // ── EXPORT CSV ───────────────────────────────────────────
+    // Export SEMUA pendaftar (semua status), bukan cuma token aktif.
+    // MURNI READ-ONLY: cuma SELECT + download file. Nol tulis, nol kirim email,
+    // nol ubah status -- aman dipencet kapan aja.
     async function exportCSV() {
-      var result = await sbQuery('launch_tokens?select=*&is_used=eq.false&order=created_at.desc&limit=500');
-      if (!result.data.length) return showToast('Tidak ada token aktif untuk diexport', true);
-
-      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
+      showToast('Menyiapkan CSV semua pendaftar...');
+      var pMap = { rhea: 'Rhea', phi: 'Phi' };
       var cMap = { breen: 'Breen', auburn: 'Auburn' };
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
+      var STATUS = { pending: 'Belum Diproses', invited: 'Undangan Terkirim', purchased: 'Sudah Beli', expired: 'Expired' };
 
-      function csvField(v) {
-        return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-      }
+      // Ambil SEMUA baris (paginasi 1000/req -- PostgREST batasi per request)
+      var all = [], from = 0;
+      try {
+        while (true) {
+          var res = await sbQuery('launch_waitlist_view?select=*&order=registered_at.desc', {
+            headers: { 'Range': from + '-' + (from + 999), 'Range-Unit': 'items' }
+          });
+          if (!res.data || !res.data.length) break;
+          all = all.concat(res.data);
+          if (res.data.length < 1000) break;
+          from += 1000;
+        }
+      } catch (e) { return showToast('Gagal ambil data: ' + e.message, true); }
+      if (!all.length) return showToast('Tidak ada pendaftar untuk diexport', true);
 
-      var rows = result.data.map(function(t) {
+      function csvField(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+      var header = ['email','no_hp','produk','warna','ukuran','status','pernah_beli','flag_jastip','tanggal_daftar'];
+      var rows = all.map(function(r) {
         return [
-          t.email, fmtPhone(t.phone), t.token,
-          getAccessDomain() + '/jacket-access/?token=' + t.token,
-          pMap[t.product] || t.product || '',
-          cMap[t.color] || t.color || '',
-          sMap[t.size] || t.size || '',
-          fmtDate(t.expires_at)
+          r.email, r.phone,
+          pMap[r.product] || r.product || '',
+          cMap[r.color] || r.color || '',
+          sMap[r.size] || r.size || '',
+          STATUS[r.effective_status] || r.effective_status || '',
+          r.already_purchased ? ('Ya' + (r.purchased_product_name ? ' (' + r.purchased_product_name + ')' : '')) : '',
+          r.is_flagged ? 'Ya' : '',
+          r.registered_at || ''
         ].map(csvField).join(',');
       });
 
-      var csv  = 'email,phone,token,access_link,product,color,size,expires_at\n' + rows.join('\n');
-      var blob = new Blob([csv], { type: 'text/csv' });
+      var csv  = header.join(',') + '\n' + rows.join('\n');
+      var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
       var url  = URL.createObjectURL(blob);
       var a    = document.createElement('a');
-      a.href = url; a.download = 'jedda-tokens-' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.href = url; a.download = 'jedda-waitlist-' + new Date().toISOString().slice(0, 10) + '.csv';
       a.click(); URL.revokeObjectURL(url);
-      showToast('CSV berhasil didownload');
+      showToast(all.length + ' pendaftar berhasil diexport');
     }
   </script>
 
