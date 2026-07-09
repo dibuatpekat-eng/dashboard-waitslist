@@ -1080,47 +1080,50 @@ async function loadYuwa() {
 }
 
 function renderYuwa() {
+  const groupOf = r => r.identity_key || r.phone_normalized || r.email_normalized || r.order_no;
+  const fmtd = d => { if (!d) return '-'; try { return new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}); } catch(_) { return '-'; } };
+
+  // stat dari data penuh
+  const allG = {};
+  yuwaData.forEach(r => { (allG[groupOf(r)] = allG[groupOf(r)] || []).push(r); });
+  let byQty = 0, byDb = 0;
+  Object.values(allG).forEach(g => {
+    const tot = Number(g[0].total_yuwa) || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
+    if (tot >= 2) byQty++; else if (g.some(r => r.in_jastip_db)) byDb++;
+  });
+  document.getElementById('yuwaStatPeople').textContent = Object.keys(allG).length;
+  document.getElementById('yuwaStatQty').textContent = byQty;
+  document.getElementById('yuwaStatDb').textContent = byDb;
+
+  // filter + group per orang
   const q = (document.getElementById('yuwaSearch')?.value || '').trim().toLowerCase();
   let rows = yuwaData.slice();
   if (q) rows = rows.filter(r => ((r.recipient_name||'') + ' ' + (r.phone||'') + ' ' + (r.email||'')).toLowerCase().includes(q));
-
-  // group per orang (HP -> email -> order_no sebagai fallback)
   const groups = {};
-  rows.forEach(r => {
-    const key = r.phone_normalized || r.email_normalized || r.order_no;
-    (groups[key] = groups[key] || []).push(r);
-  });
+  rows.forEach(r => { (groups[groupOf(r)] = groups[groupOf(r)] || []).push(r); });
   const keys = Object.keys(groups);
-
-  // stat: hitung dari data penuh (bukan hasil search)
-  const allGroups = {};
-  yuwaData.forEach(r => { const k = r.phone_normalized || r.email_normalized || r.order_no; (allGroups[k] = allGroups[k] || []).push(r); });
-  let byQty = 0, byDb = 0;
-  Object.values(allGroups).forEach(g => {
-    const tot = g[0].total_yuwa_by_phone || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
-    const inDb = g.some(r => r.in_jastip_db);
-    if (tot >= 2) byQty++; else if (inDb) byDb++;
-  });
-  document.getElementById('yuwaStatPeople').textContent = Object.keys(allGroups).length;
-  document.getElementById('yuwaStatQty').textContent = byQty;
-  document.getElementById('yuwaStatDb').textContent = byDb;
 
   const el = document.getElementById('yuwaList');
   if (!keys.length) { el.innerHTML = '<div class="empty"><span class="glyph">✓</span><p>Belum ada yang perlu refund.</p></div>'; return; }
 
   el.innerHTML = keys.map(k => {
-    const g = groups[k];
+    const g = groups[k].slice().sort((a,b) => (a.order_date||'').localeCompare(b.order_date||''));
     const first = g[0];
-    const totalQty = first.total_yuwa_by_phone || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
+    const totalQty = Number(first.total_yuwa) || g.reduce((s,r)=>s+(r.yuwa_qty||0),0);
     const inDb = g.some(r => r.in_jastip_db);
     const reasons = [];
     if (totalQty >= 2) reasons.push('<span class="badge high">' + totalQty + ' pcs Yuwa</span>');
     if (inDb) reasons.push('<span class="badge medium">Ada di database jastip</span>');
-    const orders = g.map(r => '<span class="tag">#' + esc(String(r.order_no)) + ' · ' + (r.yuwa_qty||0) + ' pcs · ' + esc(r.order_status||'-') + '</span>').join(' ');
+    const orderRows = g.map(r =>
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:12.5px">' +
+        '<span><b>#' + esc(String(r.order_no)) + '</b> &nbsp;·&nbsp; ' + (r.yuwa_qty||0) + ' pcs Yuwa</span>' +
+        '<span style="color:var(--muted);white-space:nowrap">' + esc(r.order_status||'-') + ' · ' + fmtd(r.order_date) + '</span>' +
+      '</div>').join('');
     return '<div class="flag-item">' +
       '<div class="flag-top"><div class="flag-why"><b>' + esc(first.recipient_name || '—') + '</b></div><div>' + reasons.join(' ') + '</div></div>' +
-      '<div class="co-field">HP: ' + esc(first.phone || '—') + (first.email ? (' · ' + esc(first.email)) : '') + '</div>' +
-      '<div style="margin-top:8px" class="tag-list">' + orders + '</div>' +
+      '<div class="co-field" style="color:var(--muted);margin-bottom:2px">HP: ' + esc(first.phone || '—') + (first.email ? (' · ' + esc(first.email)) : '') + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:8px">Order Yuwa (' + g.length + ' order · ' + totalQty + ' pcs)</div>' +
+      orderRows +
       '</div>';
   }).join('');
 }
