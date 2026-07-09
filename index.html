@@ -267,14 +267,16 @@
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
     .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
-    /* Tanda operator (Shortlist / Aware) -- icon minimalis monokrom, inline */
-    .jd-mark-row { display: inline-flex; align-items: center; gap: 5px; }
+    /* Tanda operator (Shortlist / Aware) -- icon minimalis, digeser ke kanan */
+    .jd-mark-row { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding-left: 14px; }
     .jd-mark-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 23px; padding: 0;
       border: 1px solid var(--border-strong); background: transparent; color: var(--text-3);
       border-radius: 4px; cursor: pointer; transition: .12s; }
     .jd-mark-btn svg { width: 13px; height: 13px; display: block; }
-    .jd-mark-btn:hover { color: var(--text); border-color: var(--text-2); }
-    .jd-mark-btn.on { background: var(--text); border-color: var(--text); color: #F7F6F4; }
+    .jd-mark-btn:hover { color: var(--text-2); border-color: var(--text-2); }
+    .jd-mark-btn.on-star  { border-color: #E3C766; color: #C8961E; background: #FDF7E6; }
+    .jd-mark-btn.on-star svg path { fill: currentColor; }
+    .jd-mark-btn.on-aware { border-color: var(--flag-border); color: var(--flag); background: var(--flag-bg); }
     .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
     .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 440px; }
     .jd-flag-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -517,11 +519,6 @@
       <div class="jd-header-brand">Jedda — Launch</div>
       <div class="jd-header-meta">
         <span id="jd-header-date"></span>
-        <div class="jd-env-switch" title="Domain used for access links sent to customers">
-          <button type="button" class="jd-env-btn" id="jd-env-staging-btn" onclick="switchEnv('staging')">Staging</button>
-          <span>|</span>
-          <button type="button" class="jd-env-btn" id="jd-env-production-btn" onclick="switchEnv('production')">Production</button>
-        </div>
         <button class="jd-header-logout" id="jd-refresh-all-btn" onclick="refreshAllData()">Refresh</button>
         <button class="jd-header-logout" onclick="jdLogout()">Log out</button>
       </div>
@@ -896,27 +893,12 @@
       });
     }
 
-    // ── ENV SWITCH (domain used for access links) ─────────────
-    var ENV_DOMAINS = { staging: 'https://beta2.jeddawear.com', production: 'https://jeddawear.com' };
-    var jdEnv = localStorage.getItem('jd_env') === 'production' ? 'production' : 'staging';
-
-    function setEnv(env) {
-      jdEnv = (env === 'production') ? 'production' : 'staging';
-      localStorage.setItem('jd_env', jdEnv);
-      document.getElementById('jd-env-staging-btn').classList.toggle('active', jdEnv === 'staging');
-      document.getElementById('jd-env-production-btn').classList.toggle('active', jdEnv === 'production');
-    }
-
-    // Called from the toggle buttons — also re-renders the tokens table so the
-    // "Kelola" actions (locked/unlocked per env) update immediately instead of
-    // only taking effect after a manual page refresh.
-    function switchEnv(env) {
-      setEnv(env);
-      loadTokens();
-    }
-
+    // ── ENV: PRODUCTION SAJA ──────────────────────────────────
+    // Toggle Staging dihapus permanen -- semua link akses & email SELALU pakai
+    // domain produksi. (Mencegah risiko kirim link staging ke customer asli.)
+    var jdEnv = 'production';
     function getAccessDomain() {
-      return ENV_DOMAINS[jdEnv];
+      return 'https://jeddawear.com';
     }
 
     function fmtDuration(hours) {
@@ -955,7 +937,6 @@
       document.getElementById('jd-login').style.display = 'none';
       document.getElementById('jd-app').style.display = 'block';
       document.getElementById('jd-header-date').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      setEnv(jdEnv);
       loadWaitlist(1);
       loadTokens();
       loadAllocations();
@@ -988,33 +969,31 @@
       var pMap = { rhea: 'Rhea', phi: 'Phi' }, cMap = { breen: 'Breen', auburn: 'Auburn' }, sMap = { sm: 'S/M', lxl: 'L/XL' };
       var cOrd = ['breen', 'auburn'], sOrd = ['sm', 'lxl'];
       var html = '';
-      var grand = 0, grandClean = 0;
+      var grand = 0;
       ['rhea', 'phi'].forEach(function(prod) {
         var pr = rows.filter(function(r) { return r.product === prod; })
           .sort(function(a, b) { return (cOrd.indexOf(a.color) - cOrd.indexOf(b.color)) || (sOrd.indexOf(a.size) - sOrd.indexOf(b.size)); });
         if (!pr.length) return;
         var sub = pr.reduce(function(s, r) { return s + r.total; }, 0);
-        var subC = pr.reduce(function(s, r) { return s + r.clean; }, 0);
         var max = Math.max.apply(null, pr.map(function(r) { return r.total; }).concat([1]));
-        grand += sub; grandClean += subC;
+        grand += sub;
         html += '<div style="margin-bottom:18px">'
           + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
           + '<span style="font-size:13px;font-weight:500;letter-spacing:.02em">' + pMap[prod] + '</span>'
-          + '<span style="font-size:11px;color:var(--text-3)">total <strong style="color:var(--text)">' + sub + '</strong> · bersih ' + subC + '</span></div>';
+          + '<span style="font-size:11px;color:var(--text-3)">total <strong style="color:var(--text)">' + sub + '</strong></span></div>';
         pr.forEach(function(r) {
           var pct = Math.round(r.total / max * 100);
-          html += '<div style="display:grid;grid-template-columns:120px 1fr 92px;align-items:center;gap:12px;padding:3px 0">'
+          html += '<div style="display:grid;grid-template-columns:120px 1fr 44px;align-items:center;gap:12px;padding:3px 0">'
             + '<span style="font-size:12px;color:var(--text-2)">' + (cMap[r.color] || r.color) + ' ' + (sMap[r.size] || r.size) + '</span>'
             + '<span style="height:6px;background:var(--border);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + pct + '%;background:var(--text)"></span></span>'
-            + '<span style="font-size:12px;text-align:right"><strong>' + r.total + '</strong> <span style="color:var(--text-3)">(' + r.clean + ')</span></span>'
+            + '<span style="font-size:12px;text-align:right"><strong>' + r.total + '</strong></span>'
             + '</div>';
         });
         html += '</div>';
       });
       html += '<div style="border-top:1px solid var(--border);padding-top:10px;font-size:12px;display:flex;justify-content:space-between">'
         + '<span style="color:var(--text-3)">TOTAL semua varian</span>'
-        + '<span><strong>' + grand + '</strong> · bersih ' + grandClean + '</span></div>'
-        + '<div style="font-size:10px;color:var(--text-3);margin-top:6px">Angka: total pendaftar (dalam kurung = bersih, tanpa flag jastip).</div>';
+        + '<span><strong>' + grand + '</strong></span></div>';
       el.innerHTML = html;
     }
 
@@ -1592,8 +1571,8 @@
         // dari status/flag jastip. Klik toggle: klik tanda yang sama = lepas.
         var mk = row.mark || '';
         var markHtml = '<span class="jd-mark-row">'
-          + '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
-          + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>'
+          + '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on-star' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
+          + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on-aware' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + row.id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>'
           + '</span>';
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + markHtml + '</div>' + statusCaption;
 
@@ -1874,11 +1853,16 @@
         // "Generate baru" lebih aman (selalu refresh private_variation_id).
         var actionButtons =
           '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>';
+        // Blokir manual: kalau ada yang share/salahgunain token, expired-kan
+        // langsung -> link mati. Cuma buat token yang masih aktif (belum dipakai
+        // & belum expired).
+        if (!row.is_used && !expired) {
+          actionButtons += '<button style="color:var(--flag)" onclick="jdExpireToken(\'' + row.token + '\', \'' + (row.email||'').replace(/['\\\\]/g, "\\$&") + '\')">Blokir / expired-kan sekarang</button>';
+        }
 
-        // Token yang sudah dipakai (sudah ada order lunas di baliknya) dikunci di
-        // production untuk mencegah reset tanpa sadar bikin slot yang sama terjual
-        // dua kali. Di staging dilonggarkan supaya bisa bebas dites ulang.
-        var actionsHtml = (row.is_used && jdEnv === 'production')
+        // Token yang sudah dipakai (sudah ada order lunas di baliknya) dikunci
+        // untuk mencegah reset tanpa sadar bikin slot yang sama terjual dua kali.
+        var actionsHtml = row.is_used
           ? '<span class="jd-dd-label" style="padding:8px 12px;display:block;color:var(--text-3)">Token sudah dipakai — tidak ada aksi</span>'
           : '<span class="jd-dd-label">' + (row.email || '—') + '</span>' + actionButtons;
 
@@ -1922,6 +1906,27 @@
         document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
       }
     });
+
+    // Blokir token manual: set expires_at ke masa lalu -> gate produk langsung
+    // nolak link-nya. Orangnya balik ke status "Expired" (bisa dikirim ulang /
+    // ditandai). Nggak dihapus supaya jejaknya tetap ada.
+    async function jdExpireToken(token, email) {
+      if (!confirm('Blokir token ini SEKARANG?\n\n' + (email || '(tanpa email)') + '\n\nLink-nya langsung mati. Orangnya balik jadi "Expired" — bisa kamu kirim ulang atau tandai.')) return;
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + encodeURIComponent(token), {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ expires_at: new Date(Date.now() - 60000).toISOString() })
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('status ' + res.status);
+        showToast('Token diblokir (di-expired). Link-nya udah mati.');
+        loadTokens();
+        loadWaitlist(currentPage);
+      } catch (e) {
+        showToast('Gagal blokir token: ' + e.message, true);
+      }
+    }
 
     async function tokenAction(type, waitlistId, currentToken, email, product, color, size) {
       document.querySelectorAll('.jd-token-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
