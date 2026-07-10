@@ -1,0 +1,29 @@
+/**
+ * Jedda — Archive "Waitlist Open" Badge (Rhea & Phi only)
+ * Type: CSS Snippet (atau HTML <style> di Site Wide HEADER biar tanpa flash).
+ * Lokasi efek: halaman shop/kategori (grid produk).
+ *
+ * Apa yang dilakukan:
+ *  - Untuk 2 produk waitlist (Rhea Flare Jacket, Phi Jacket), badge stok di grid
+ *    yang normalnya "Out of Stock" diganti jadi "Waitlist Open".
+ *  - TIDAK menyentuh gambar / overlay: efek "screen"/dim tetap (itu dari class
+ *    .outofstock di <li>, dibiarkan apa adanya). Produk OOS lain tetap "Out of Stock".
+ *
+ * Cara kerja (tanpa flash, tanpa JS): teks asli badge disembunyikan (font-size:0)
+ * lalu teks baru dimunculkan via ::after — badge <p class="stock out-of-stock"> hanya
+ * berisi 1 text node, jadi aman.
+ *
+ * PRODUCTION: ganti post-13006 / post-13042 ke ID produk waitlist di prod
+ * (sama seperti WAITLIST_IDS di snippet "Product Stock & Button State").
+ */
+li.post-13006 p.stock.out-of-stock,
+li.post-13042 p.stock.out-of-stock {
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+}
+li.post-13006 p.stock.out-of-stock::after,
+li.post-13042 p.stock.out-of-stock::after {
+  content: "Waitlist Open";
+  font-size: 12px;
+  letter-spacing: 1.1px;
+}

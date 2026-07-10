@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────
+# JEDDA Waitlist & Anti-Jastip — .gitignore
+# See README.md → "Secrets & what must stay out of Git"
+# ─────────────────────────────────────────────────────────────
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local agent / tooling settings (may contain machine-specific allowlists)
+.claude/settings.local.json
+.claude/**/settings.local.json
+
+# ⚠️ SECRETS — DO NOT COMMIT
+# The raw WPCode snippet EXPORTS below embed the Supabase ANON key AND a
+# SERVICE_ROLE key (full RLS bypass = read/write/delete the entire
+# jedda-atelier database). Never commit the raw exports.
+# Sanitized copies (keys replaced with placeholders) live in
+# migration/sanitized/ and ARE tracked — see the negation below.
+migration/*.json
+migration/**/*.json
+!migration/sanitized/
+!migration/sanitized/**
+
+# Generic secret files
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+service-role*.txt
+
+# Node / build output (in case tooling is added later)
+node_modules/
+dist/
+build/
+*.log
