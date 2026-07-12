@@ -851,7 +851,7 @@
     var totalRows      = 0;
     var pendingBatch   = [];
     var lastBatchSent  = [];
-    var lastBatchHours = 48;
+    var lastBatchHours = 24;
     // Default waitlist: "prioritas aksi" -- yang butuh aksi (pending/expired) di
     // atas, invited lalu purchased di bawah (action_rank asc), terbaru duluan di
     // tiap grup. Bisa dioverride via dropdown sort. Token tab tetap newest-first.
@@ -1769,7 +1769,7 @@
       // explicitRows dipakai buat generate 1 baris (jdGenerateSingle) tanpa
       // ganggu seleksi bulk; kalau kosong, pakai seleksi checkbox biasa.
       var rows  = explicitRows || Object.values(selectedRows);
-      var hours = 48; // default; bisa diganti di modal konfirmasi
+      var hours = 24; // default; bisa diganti di modal konfirmasi
       if (!rows.length) return;
 
       lastBatchHours = hours;
@@ -1846,7 +1846,7 @@
 
       // Pilih waktu berlaku di modal (single & batch sama-sama bisa) -- default
       // ambil dari dropdown action-bar (kalau bulk) atau 48 jam.
-      document.getElementById('jd-modal-hours').value = String(hours || 48);
+      document.getElementById('jd-modal-hours').value = String(hours || 24);
       jdUpdateModalExpiry();
 
       document.getElementById('jd-modal-token-preview').textContent =
@@ -1857,7 +1857,7 @@
 
     // Update hint "expires ..." live saat dropdown jam di modal diubah.
     function jdUpdateModalExpiry() {
-      var hours = parseInt(document.getElementById('jd-modal-hours').value) || 48;
+      var hours = parseInt(document.getElementById('jd-modal-hours').value) || 24;
       var exp = new Date(Date.now() + hours * 3600000);
       var hint = document.getElementById('jd-modal-expiry-hint');
       if (hint) hint.textContent = 'expired ' + fmtDate(exp.toISOString());
@@ -1885,6 +1885,11 @@
         var status  = row.is_used ? 'purchased' : expired ? 'expired' : expiringSoon ? 'review' : 'invited';
         var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : expiringSoon ? 'Segera Expired' : 'Aktif';
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
+        // Penanda apakah email akses sudah dikirim (email_sent_at). Token yang
+        // sudah dipakai gak perlu ditandai.
+        var emailCap = row.is_used ? '' : (row.email_sent_at
+          ? '<div style="font-size:10px;color:var(--text-3);margin-top:4px;white-space:nowrap">✉ Email terkirim</div>'
+          : '<div style="font-size:10px;color:var(--flag);margin-top:4px;white-space:nowrap;font-weight:500">✉ Email belum dikirim</div>');
 
         // "Reset & kirim ulang" dihapus -- satu-satunya beda dari "Generate
         // token baru" adalah dia pertahanin link lama, tapi karena dua-duanya
@@ -1893,6 +1898,10 @@
         var actionButtons =
           '<button onclick="jdCopyLink(\'' + row.token + '\')">Salin link akses</button>'
           + '<button onclick="tokenAction(\'new\', \'' + row.waitlist_id + '\', \'' + row.token + '\', \'' + (row.email||'') + '\', \'' + (row.product||'') + '\', \'' + (row.color||'') + '\', \'' + (row.size||'') + '\')">Generate token baru</button>';
+        // Token yang sudah dibuat tapi email BELUM dikirim (mis. tadi klik "Nanti").
+        if (!row.is_used && !expired && !row.email_sent_at) {
+          actionButtons = '<button onclick="jdEmailToken(\'' + row.token + '\')">✉ Kirim email sekarang</button>' + actionButtons;
+        }
         // Blokir manual: kalau ada yang share/salahgunain token, expired-kan
         // langsung -> link mati. Cuma buat token yang masih aktif (belum dipakai
         // & belum expired).
@@ -1913,7 +1922,7 @@
           '<td data-label="Produk" style="color:var(--text-2)">' + (pMap[row.product] || row.product || '—') + '</td>' +
           '<td data-label="Dibuat" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.created_at) + '</td>' +
           '<td data-label="Expires" style="color:var(--text-2);white-space:nowrap">' + fmtDate(row.expires_at) + '</td>' +
-          '<td data-label="Status"><span class="badge badge-' + status + '">' + label + '</span></td>' +
+          '<td data-label="Status"><span class="badge badge-' + status + '">' + label + '</span>' + emailCap + '</td>' +
           '<td data-label="" onclick="event.stopPropagation()">' +
           '<div class="jd-token-action">' +
           '<button class="jd-token-action-btn" onclick="toggleTokenMenu(this)">Kelola ▾</button>' +
@@ -2190,40 +2199,15 @@
       closeModal('jd-modal-email');
       showToast('Mengirim email...');
 
-      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
-      var cMap = { breen: 'Breen', auburn: 'Auburn' };
-      var sMap = { sm: 'S/M', lxl: 'L/XL' };
       var sent = 0, failed = 0;
-      var sentIds = [];   // waitlist_id yang emailnya BENERAN sukses -> baru ini yg jadi 'invited'
+      var sentIds = [];      // waitlist_id yang emailnya BENERAN sukses -> baru ini yg jadi 'invited'
+      var sentTokens = [];   // token yang emailnya sukses -> ditandai email_sent_at
 
       for (var i = 0; i < lastBatchSent.length; i++) {
         var t = lastBatchSent[i];
-        var firstName    = (t.email || '').split('@')[0].split('.')[0];
-        firstName        = firstName.charAt(0).toUpperCase() + firstName.slice(1);
-        var productLabel = pMap[t.product] || t.product || 'Jacket';
-        var colorLabel   = cMap[t.color] || t.color || '';
-        var sizeLabel    = sMap[t.size] || t.size || '';
-        var accessLink   = getAccessDomain() + '/jacket-access/?token=' + t.token;
-
-        var html = buildLaunchEmailHtml(firstName, productLabel, colorLabel, sizeLabel, accessLink, lastBatchHours);
-
-        try {
-          // Routing via Supabase Edge Function untuk avoid CORS block
-          // (Resend API tidak allow direct browser calls)
-          var emailRes = await fetch(SB_URL + '/functions/v1/send-launch-email', {
-            method: 'POST',
-            headers: authHeaders(),
-            body: JSON.stringify({
-              to:      t.email,
-              subject: 'Your Waitlist Access Is Ready',
-              html:    html
-            })
-          });
-          var emailData = await emailRes.json();
-          if (emailRes.ok && emailData.ok) { sent++; sentIds.push(t.waitlist_id); }
-          else { failed++; }
-        } catch(e) { failed++; }
-
+        var okSend = await jdSendOneAccessEmail(t);
+        if (okSend) { sent++; sentIds.push(t.waitlist_id); sentTokens.push(t.token); }
+        else { failed++; }
         if (i < lastBatchSent.length - 1) await new Promise(function(r) { setTimeout(r, 200); });
       }
 
@@ -2236,11 +2220,63 @@
           body: JSON.stringify({ status: 'invited' })
         });
       }
+      if (sentTokens.length) {
+        await fetch(SB_URL + '/rest/v1/launch_tokens?token=in.(' + sentTokens.join(',') + ')', {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ email_sent_at: new Date().toISOString() })
+        });
+      }
 
       lastBatchSent = [];
       showToast(failed === 0 ? sent + ' email berhasil terkirim' : sent + ' terkirim, ' + failed + ' gagal', failed > 0);
       loadWaitlist(currentPage);
       loadTokens();
+    }
+
+    // Kirim 1 email akses (dipakai batch & per-token). Return true kalau sukses.
+    async function jdSendOneAccessEmail(t) {
+      var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
+      var cMap = { breen: 'Breen', auburn: 'Auburn' };
+      var sMap = { sm: 'S/M', lxl: 'L/XL' };
+      var firstName = (t.email || '').split('@')[0].split('.')[0];
+      firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+      var accessLink = getAccessDomain() + '/jacket-access/?token=' + t.token;
+      // durasi di email = sisa jam token (fallback ke default batch).
+      var hrs = t.expires_at ? Math.max(1, Math.round((new Date(t.expires_at) - new Date()) / 3600000)) : lastBatchHours;
+      var html = buildLaunchEmailHtml(firstName, pMap[t.product] || t.product || 'Jacket', cMap[t.color] || t.color || '', sMap[t.size] || t.size || '', accessLink, hrs);
+      try {
+        var res = await fetch(SB_URL + '/functions/v1/send-launch-email', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ to: t.email, subject: 'Your Waitlist Access Is Ready', html: html })
+        });
+        var data = await res.json();
+        return res.ok && data.ok;
+      } catch (e) { return false; }
+    }
+
+    // Kirim email untuk 1 token yang SUDAH ada (mis. tadi generate lalu klik "Nanti").
+    // Menandai email_sent_at + flip waitlist ke 'invited' kalau sukses.
+    async function jdEmailToken(token) {
+      var r = await sbQuery('launch_tokens?select=*&token=eq.' + encodeURIComponent(token) + '&limit=1');
+      var t = r.data && r.data[0];
+      if (!t) { showToast('Token tidak ditemukan', true); return; }
+      if (t.is_used) { showToast('Token sudah dipakai — tidak perlu kirim email', true); return; }
+      showToast('Mengirim email...');
+      var ok = await jdSendOneAccessEmail(t);
+      if (!ok) { showToast('Gagal kirim email. Coba lagi.', true); return; }
+      await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + encodeURIComponent(token), {
+        method: 'PATCH', headers: authHeaders({ 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ email_sent_at: new Date().toISOString() })
+      });
+      await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + t.waitlist_id, {
+        method: 'PATCH', headers: authHeaders({ 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ status: 'invited' })
+      });
+      showToast('Email berhasil terkirim');
+      loadTokens();
+      loadWaitlist(currentPage);
     }
 
     // ── ALOKASI ──────────────────────────────────────────────
