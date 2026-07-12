@@ -628,8 +628,12 @@
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
             </select>
+            <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
+              <option value="">Semua Variasi</option>
+            </select>
             <select id="jd-sort-select" onchange="jdSetWaitlistSortFromSelect(this.value)">
               <option value="priority:asc">Urutkan: Prioritas aksi</option>
+              <option value="variant:asc">Urutkan: Variasi</option>
               <option value="registered_at:desc">Urutkan: Terbaru daftar</option>
               <option value="registered_at:asc">Urutkan: Terlama daftar</option>
               <option value="email:asc">Urutkan: Email A-Z</option>
@@ -858,6 +862,7 @@
     var cardFlagFilter = '';
     var markFilter = '';          // '' | 'shortlisted' | 'aware' | 'none'
     var waitlistStageFilter = ''; // '' | pending | invited | purchased | expired
+    var waitlistVariantFilter = ''; // '' | 'product|color|size' -- filter tabel per variasi (8 jenis)
     // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
     var MARK_ICON = {
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
@@ -877,6 +882,12 @@
       markFilter = '';
       if (v.indexOf('stage:') === 0) waitlistStageFilter = v.slice(6);
       else if (v.indexOf('mark:') === 0) markFilter = v.slice(5);
+      loadWaitlist(1);
+    }
+    // Filter per variasi (product|color|size). Independen dari filter Tahap/Tanda,
+    // jadi bisa dikombinasi (mis. "Phi Auburn S/M" + "Belum Diproses").
+    function jdApplyVariantFilter(v) {
+      waitlistVariantFilter = v;
       loadWaitlist(1);
     }
     var STATUS_LABELS = { pending: 'Pending', invited: 'Undangan Terkirim', purchased: 'Sudah Beli', expired: 'Expired' };
@@ -1189,7 +1200,8 @@
     function jdViewInWaitlist(email) {
       switchTab('waitlist');
       document.getElementById('jd-filter-status').value = '';
-      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = '';
+      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = '';
+      var vSel = document.getElementById('jd-filter-variant'); if (vSel) vSel.value = '';
       document.getElementById('jd-search-input').value = email;
       loadWaitlist(1);
       var section = document.getElementById('jd-tab-panel-waitlist');
@@ -1459,7 +1471,9 @@
       // sort lain = kolom tunggal biasa. Tetap server-side biar jalan sama pagination.
       var orderClause = waitlistSort.col === 'priority'
         ? 'action_rank.asc,registered_at.desc'
-        : waitlistSort.col + '.' + waitlistSort.dir;
+        : waitlistSort.col === 'variant'
+          ? 'product.asc,color.asc,size.asc,registered_at.desc'
+          : waitlistSort.col + '.' + waitlistSort.dir;
       var q  = 'launch_waitlist_view?select=*&order=' + orderClause;
       // Filter by effective_status, bukan status mentah -- soalnya "status" bisa
       // nyangkut di 'invited' selamanya walau token-nya udah expired. Milih
@@ -1470,6 +1484,10 @@
       if (cardFlagFilter === 'eversent') q += '&effective_status=in.(invited,purchased,expired)';
       if (markFilter === 'none')      q += '&mark=is.null';
       else if (markFilter)            q += '&mark=eq.' + markFilter;
+      if (waitlistVariantFilter) {
+        var vf = waitlistVariantFilter.split('|');
+        q += '&product=eq.' + vf[0] + '&color=eq.' + vf[1] + '&size=eq.' + vf[2];
+      }
       if (search) {
         // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
         // (XSS-escape) di seluruh scope loadWaitlist, bikin render baris error.
@@ -2239,6 +2257,19 @@
       { product:'phi',  color:'auburn', size:'sm',  label:'Phi — Auburn · S/M' },
       { product:'phi',  color:'auburn', size:'lxl', label:'Phi — Auburn · L/XL' }
     ];
+
+    // Isi dropdown "Filter per variasi" di toolbar Waitlist dari ALLOC_VARIANTS
+    // (sumber tunggal ke-8 variasi). Nilai = "product|color|size".
+    (function jdPopulateVariantFilter() {
+      var sel = document.getElementById('jd-filter-variant');
+      if (!sel) return;
+      ALLOC_VARIANTS.forEach(function(v) {
+        var o = document.createElement('option');
+        o.value = v.product + '|' + v.color + '|' + v.size;
+        o.textContent = v.label;
+        sel.appendChild(o);
+      });
+    })();
 
     function renderAllocGrid() {
       var grid = document.getElementById('jd-alloc-grid');
