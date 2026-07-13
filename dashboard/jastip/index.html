@@ -316,22 +316,6 @@
     <div class="card" id="yuwaList"></div>
   </div>
 
-  <!-- SUSPECTS -->
-  <div class="page" id="page-suspects">
-    <div class="page-head">
-      <div>
-        <p class="page-title">Database Jastip</p>
-        <p class="page-desc">Daftar HP/alamat yang sudah dikonfirmasi atau dicurigai jastip. Order baru dari kontak ini otomatis kena flag "high confidence".</p>
-      </div>
-      <button class="btn btn-dark" onclick="openAddSuspect()">+ Tambah Manual</button>
-    </div>
-    <div class="toolbar">
-      <input class="input" style="width:280px" id="suspectSearch" placeholder="Cari HP, alamat, atau nama…" oninput="loadSuspects()">
-      <div class="spacer"></div>
-      <button class="chip active" data-s="active" onclick="setSuspectFilter('active', this)">Aktif</button>
-      <button class="chip" data-s="all" onclick="setSuspectFilter('all', this)">Semua (termasuk cleared)</button>
-    </div>
-    <div class="card" id="suspectsList"></div>
   </div>
 
   <!-- WATCHED PRODUCTS -->
@@ -352,50 +336,6 @@
     </div>
   </div>
 
-</div>
-
-<!-- CONFIRM MODAL -->
-<div class="overlay" id="confirmModal">
-  <div class="modal">
-    <div class="modal-head"><h3>Confirm Jastip</h3><button class="modal-close" onclick="closeModal('confirmModal')">×</button></div>
-    <div class="modal-body">
-      <div class="field">
-        <label>Identitas yang akan disimpan ke Database Jastip</label>
-        <div id="confirmIdentities"></div>
-      </div>
-      <div class="field">
-        <label class="check-row" style="text-transform:none;letter-spacing:0;color:var(--ink);font-size:12.5px;padding:0">
-          <input type="checkbox" id="saveAddresses"><span>Simpan juga alamat tiap identitas <span style="color:var(--muted)">(hati-hati: kalau alamatnya gedung/kompleks yang dipakai bareng, tetangga bisa ikut ke-flag)</span></span>
-        </label>
-      </div>
-      <div class="field">
-        <label>Catatan</label>
-        <textarea id="confirmNotes" rows="3" placeholder="Opsional — alasan, order no, dsb"></textarea>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeModal('confirmModal')">Batal</button>
-      <button class="btn btn-dark" onclick="doConfirmJastip()">Simpan ke Database</button>
-    </div>
-  </div>
-</div>
-
-<!-- ADD SUSPECT MODAL -->
-<div class="overlay" id="addSuspectModal">
-  <div class="modal">
-    <div class="modal-head"><h3>Tambah Jastip Manual</h3><button class="modal-close" onclick="closeModal('addSuspectModal')">×</button></div>
-    <div class="modal-body">
-      <div class="field"><label>No HP</label><input type="text" id="manualPhone" placeholder="08xx-xxxx-xxxx"></div>
-      <div class="field"><label>Alamat</label><textarea id="manualAddress" rows="3" placeholder="Alamat lengkap"></textarea></div>
-      <div class="field"><label>Nama (opsional)</label><input type="text" id="manualName" placeholder="Nama penerima"></div>
-      <div class="field"><label>Email (opsional)</label><input type="text" id="manualEmail" placeholder="email@contoh.com"></div>
-      <div class="field"><label>Catatan</label><textarea id="manualNotes" rows="2" placeholder="Opsional"></textarea></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeModal('addSuspectModal')">Batal</button>
-      <button class="btn btn-dark" onclick="doAddManualSuspect()">Simpan</button>
-    </div>
-  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -428,7 +368,6 @@ function goPage(name, btn) {
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   if (name === 'flags') loadFlags();
-  if (name === 'suspects') loadSuspects();
   if (name === 'yuwa') loadYuwa();
   if (name === 'watched') loadWatched();
 }
@@ -634,7 +573,7 @@ function renderFlags() {
   }
 
   // currentGroups tetap array PENUH (belum dipotong halaman) supaya index yang
-  // dipakai tombol Confirm/Clear (openConfirmGroup(idx), clearGroup(idx)) selalu
+  // dipakai tombol Clear (clearGroup(idx)) selalu
   // nunjuk ke cluster yang benar -- cuma bagian yang DIRENDER yang dipotong per
   // halaman, index aslinya (dari groups penuh) tetap dibawa lewat pageSlice.
   const totalPages = Math.max(1, Math.ceil(groups.length / flagPageSize));
@@ -755,7 +694,6 @@ function renderFlags() {
           <option value="medium" ${conf === 'medium' ? 'disabled' : ''}>Medium</option>
           <option value="low" ${conf === 'low' ? 'disabled' : ''}>Low</option>
         </select>
-        <button class="btn btn-danger-ghost btn-sm" onclick="openConfirmGroup(${idx})">Confirm Jastip</button>
         <button class="btn btn-ghost btn-sm" onclick="clearGroup(${idx})">Clear</button>
       </div>
     </div>`;
@@ -795,271 +733,6 @@ async function clearGroup(idx) {
     flagData = flagData.filter(f => !ids.includes(f.id));
     renderFlags();
     showToast('Ditandai bukan jastip');
-  } catch(e) { showToast('Error: ' + e.message); }
-}
-
-let confirmGroupIdx = null;
-let confirmFingerprints = [];
-
-// Kelompokkan order jadi "sidik jari" untuk ditampilkan di modal (grain: HP+email).
-// TAPI tiap sidik jari tetap menyimpan SEMUA order-nya — supaya waktu disimpan,
-// semua email/alamat/nama yang beda di HP yang sama tidak ada yang dibuang. Tujuannya:
-// semua HP DAN semua email jadi acuan pencocokan, bukan cuma salah satu.
-function distinctFingerprints(orders) {
-  const seen = new Map();
-  (orders || []).forEach(o => {
-    const pn = o.phone_normalized || (o.phone || '').replace(/[^0-9]/g, '');
-    const en = o.email_normalized || (o.email || '').toLowerCase().trim();
-    const key = (pn || en) ? (pn + '|' + en) : ('order:' + o.order_no);
-    if (!seen.has(key)) {
-      seen.set(key, { phone: null, email: null, names: new Set(), addresses: new Set(), orders: [] });
-    }
-    const rec = seen.get(key);
-    if (o.recipient_name) rec.names.add(o.recipient_name);
-    if (o.address_raw) rec.addresses.add(o.address_raw);
-    if (!rec.phone && o.phone) rec.phone = o.phone;
-    if (!rec.email && o.email) rec.email = o.email;
-    rec.orders.push(o);
-  });
-  return Array.from(seen.values());
-}
-
-function openConfirmGroup(idx) {
-  confirmGroupIdx = idx;
-  confirmFingerprints = distinctFingerprints(currentGroups[idx].orders || []);
-  const box = document.getElementById('confirmIdentities');
-  box.innerHTML = confirmFingerprints.map((f, i) => {
-    const nameStr = Array.from(f.names).join(' / ') || '(tanpa nama)';
-    const line = [f.phone || '(tanpa HP)', f.email || null].filter(Boolean).join(' · ');
-    const addrLine = f.addresses.size
-      ? `<br><span style="color:var(--muted)">${esc(Array.from(f.addresses).join(' | '))}</span>` : '';
-    return `<label class="check-row"><input type="checkbox" class="id-check" data-i="${i}" checked>` +
-      `<span><b>${esc(nameStr)}</b><br><span style="color:var(--muted)">${esc(line)}</span>${addrLine}</span></label>`;
-  }).join('');
-  document.getElementById('saveAddresses').checked = true;
-  document.getElementById('confirmNotes').value = '';
-  document.getElementById('confirmModal').classList.add('show');
-}
-
-async function doConfirmJastip() {
-  if (confirmGroupIdx === null) return;
-  const ids = currentGroups[confirmGroupIdx].items.map(f => f.id);
-  const saveAddresses = document.getElementById('saveAddresses').checked;
-  const notes = document.getElementById('confirmNotes').value.trim();
-  const selected = Array.from(document.querySelectorAll('#confirmIdentities .id-check'))
-    .filter(c => c.checked)
-    .map(c => confirmFingerprints[+c.dataset.i]);
-  if (selected.length === 0) { showToast('Pilih minimal satu identitas'); return; }
-
-  // Kirim SEMUA order dari tiap sidik jari terpilih. Fungsi jastip_confirm_identities
-  // menyimpan tiap kombinasi unik (HP, email, alamat) sebagai baris sendiri — tidak
-  // ada email/alamat yang dibuang, jadi semuanya jadi acuan match.
-  const identities = [];
-  selected.forEach(f => f.orders.forEach(o => identities.push({
-    phone: o.phone || null,
-    email: o.email || null,
-    name: o.recipient_name || null,
-    address_raw: o.address_raw || null
-  })));
-
-  try {
-    const saved = await sb('rpc/jastip_confirm_identities', {
-      method: 'POST',
-      body: JSON.stringify({
-        p_identities: identities,
-        p_notes: notes || null,
-        p_save_addresses: saveAddresses,
-        p_status: 'confirmed',
-        p_confidence: 'high'
-      })
-    });
-    await sb(`jastip_flags?id=in.(${ids.join(',')})`, { method: 'PATCH', body: JSON.stringify({ reviewed: true, review_action: 'confirmed', reviewed_at: new Date().toISOString() }) });
-    flagData = flagData.filter(f => !ids.includes(f.id));
-    renderFlags();
-    closeModal('confirmModal');
-    showToast(`${saved != null ? saved : identities.length} sidik jari disimpan ke Database Jastip`);
-  } catch(e) { showToast('Error: ' + e.message); }
-}
-
-// ============================================================
-// SUSPECTS
-// ============================================================
-const STATUS_LABEL = { confirmed: 'Confirmed', suspected: 'Dicurigai', watching: 'Watching', cleared: 'Cleared' };
-const STATUS_BADGE = { confirmed: 'high', suspected: 'medium', watching: 'low', cleared: 'low' };
-let suspectFilter = 'active';
-
-function setSuspectFilter(f, btn) {
-  suspectFilter = f;
-  document.querySelectorAll('.chip[data-s]').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
-  loadSuspects();
-}
-
-async function loadSuspects() {
-  const q = document.getElementById('suspectSearch').value.trim();
-  let query = 'select=*&order=address_normalized.asc.nullslast,last_seen_at.desc.nullslast';
-  if (suspectFilter === 'active') query += '&status=neq.cleared';
-  if (q) query += `&or=(phone_normalized.ilike.*${q}*,address_normalized.ilike.*${q}*,phone.ilike.*${q}*,email.ilike.*${q}*,known_names.cs.{${q}})`;
-  try {
-    const suspects = await sb(`jastip_suspects?${query}`);
-    // Ambil juga order-order milik identitas ini, biar kartu suspect nampilin
-    // riwayat order persis kayak kartu di tab Flags ("kartu yang pindah tempat",
-    // bukan ringkasan kering).
-    let suspectOrders = [];
-    const phones = Array.from(new Set((suspects || []).map(s => s.phone_normalized).filter(Boolean)));
-    const emails = Array.from(new Set((suspects || []).map(s => s.email_normalized).filter(Boolean)));
-    const conds = [];
-    if (phones.length) conds.push(`phone_normalized.in.(${phones.join(',')})`);
-    if (emails.length) conds.push(`email_normalized.in.(${emails.map(e => '"' + encodeURIComponent(e) + '"').join(',')})`);
-    if (conds.length) {
-      suspectOrders = await sb(
-        `jastip_orders?select=order_no,recipient_name,phone,phone_normalized,email,email_normalized,address_raw,products,order_status,order_date` +
-        `&or=(${conds.join(',')})&order=order_no.asc&limit=2000`
-      ) || [];
-    }
-    renderSuspects(suspects || [], suspectOrders);
-  } catch(e) {
-    document.getElementById('suspectsList').innerHTML = `<div class="empty"><p>Gagal memuat: ${e.message}</p></div>`;
-  }
-}
-
-// Baris suspect dikelompokkan per group_id (identitas yang di-confirm bareng dari
-// 1 cluster) supaya tampilannya sama seperti kartu di tab Flags: 1 kartu = 1
-// komplotan, berisi semua HP/email/alamat-nya sekaligus.
-function groupSuspects(rows) {
-  const map = new Map();
-  rows.forEach(s => {
-    const k = s.group_id || ('solo:' + s.id);
-    if (!map.has(k)) map.set(k, []);
-    map.get(k).push(s);
-  });
-  return Array.from(map.values());
-}
-
-function renderSuspects(suspects, suspectOrders) {
-  const list = document.getElementById('suspectsList');
-  if (suspects.length === 0) {
-    list.innerHTML = `<div class="empty"><div class="glyph">◌</div><p>Belum ada data.</p></div>`;
-    return;
-  }
-  const groups = groupSuspects(suspects)
-    .sort((a, b) => (b[0].last_seen_at || '').localeCompare(a[0].last_seen_at || ''));
-
-  list.innerHTML = groups.map(rows => {
-    const names = Array.from(new Set(rows.flatMap(r => r.known_names || []).filter(Boolean)));
-    const statuses = rows.map(r => r.status);
-    const status = statuses.includes('confirmed') ? 'confirmed'
-      : statuses.includes('suspected') ? 'suspected'
-      : statuses.includes('watching') ? 'watching' : 'cleared';
-    const isCleared = status === 'cleared';
-    const gid = rows[0].group_id || '';
-    const soloId = rows[0].id;
-    const note = rows.map(r => r.notes).filter(Boolean)[0];
-    const lastSeen = rows.map(r => r.last_seen_at).filter(Boolean).sort().slice(-1)[0];
-
-    const idLines = rows.map(r => {
-      const parts = [esc(r.phone) || '(tanpa HP)',
-        r.email ? esc(r.email) : null,
-        r.address_raw ? esc(r.address_raw) : null].filter(Boolean).join(' · ');
-      return `<div class="co-field">${parts}</div>`;
-    }).join('');
-
-    // Riwayat order milik identitas grup ini -- format sama dengan kartu Flags
-    // (nomor order, nama/email kalau beda-beda, badge status, produk), non-completed
-    // di bawah. Confirm jadi berasa "mindahin kartu", bukan meringkas jadi kering.
-    const groupPhones = new Set(rows.map(r => r.phone_normalized).filter(Boolean));
-    const groupEmails = new Set(rows.map(r => r.email_normalized).filter(Boolean));
-    const groupOrders = (suspectOrders || [])
-      .filter(o => groupPhones.has(o.phone_normalized) || groupEmails.has(o.email_normalized))
-      .sort((a, b) => {
-        const aDone = (!a.order_status || a.order_status === 'completed') ? 0 : 1;
-        const bDone = (!b.order_status || b.order_status === 'completed') ? 0 : 1;
-        return aDone - bDone || String(a.order_no).localeCompare(String(b.order_no), undefined, {numeric: true});
-      });
-    const orderLines = groupOrders.map(o => {
-      const products = (o.products || []).map(p => `${p.name}${p.qty > 1 ? ' ×' + p.qty : ''}`).join(', ');
-      const who = [o.recipient_name ? esc(o.recipient_name) : null, o.email ? esc(o.email) : null].filter(Boolean).join(' · ');
-      const statusTag = (o.order_status && o.order_status !== 'completed')
-        ? ` <span class="badge low" style="vertical-align:middle">${esc(o.order_status)}</span>` : '';
-      return `<div class="co-field">Order #${esc(o.order_no)}${who ? ' (' + who + ')' : ''}${statusTag} — ${esc(products) || 'tanpa produk'}</div>`;
-    }).join('');
-
-    return `
-    <div class="flag-item">
-      <div class="flag-top">
-        <div class="flag-why">
-          <span class="co-name" style="font-weight:500">${esc(names.join(' / ')) || '—'}</span>
-          <span style="color:var(--muted)">${rows.length} identitas · ${groupOrders.length} order</span>
-        </div>
-        <span class="badge ${STATUS_BADGE[status] || 'low'}">${STATUS_LABEL[status] || status}</span>
-      </div>
-      <div class="flag-order-solo">
-        ${idLines}
-        ${names.length ? `<div class="sp-names tag-list" style="margin-top:8px">${names.map(n => `<span class="tag">${esc(n)}</span>`).join('')}</div>` : ''}
-        ${note ? `<div class="sp-notes" style="margin-top:6px">${esc(note)}</div>` : ''}
-      </div>
-      ${orderLines ? `<div class="flag-order-solo">${orderLines}</div>` : ''}
-      <div class="flag-top" style="margin-bottom:0">
-        <span style="color:var(--muted);font-size:11.5px">Terakhir: ${lastSeen ? new Date(lastSeen).toLocaleDateString('id-ID') : '—'}</span>
-        <div class="actions">
-          ${!isCleared
-            ? `<button class="btn btn-danger-ghost btn-sm" onclick="clearSuspectGroup('${gid}','${soloId}')">Clear</button>`
-            : `<button class="btn btn-ghost btn-sm" onclick="reactivateSuspectGroup('${gid}','${soloId}')">Aktifkan lagi</button>`}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function suspectFilterPath(gid, soloId) {
-  return gid ? `group_id=eq.${gid}` : `id=eq.${soloId}`;
-}
-
-async function reactivateSuspectGroup(gid, soloId) {
-  try {
-    await sb(`jastip_suspects?${suspectFilterPath(gid, soloId)}`, { method: 'PATCH', body: JSON.stringify({ status: 'confirmed' }) });
-    loadSuspects();
-    showToast('Diaktifkan lagi');
-  } catch(e) { showToast('Error: ' + e.message); }
-}
-
-async function clearSuspectGroup(gid, soloId) {
-  if (!confirm('Tandai seluruh komplotan ini sebagai cleared (bukan jastip)?')) return;
-  try {
-    await sb(`jastip_suspects?${suspectFilterPath(gid, soloId)}`, { method: 'PATCH', body: JSON.stringify({ status: 'cleared' }) });
-    loadSuspects();
-    showToast('Ditandai cleared');
-  } catch(e) { showToast('Error: ' + e.message); }
-}
-
-function openAddSuspect() {
-  ['manualPhone','manualAddress','manualName','manualNotes','manualEmail'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('addSuspectModal').classList.add('show');
-}
-
-async function doAddManualSuspect() {
-  const phone = document.getElementById('manualPhone').value.trim();
-  const address = document.getElementById('manualAddress').value.trim();
-  const name = document.getElementById('manualName').value.trim();
-  const notes = document.getElementById('manualNotes').value.trim();
-  const email = document.getElementById('manualEmail').value.trim();
-  if (!phone && !address && !email) { showToast('Minimal isi HP, email, atau alamat'); return; }
-  try {
-    // Satu jalur dengan Confirm-dari-flag (RPC yang sama) -- dua jalur simpan yang
-    // beda itu rawan divergen diam-diam (persis insiden dua normalizer HP dulu).
-    await sb('rpc/jastip_confirm_identities', {
-      method: 'POST',
-      body: JSON.stringify({
-        p_identities: [{ phone: phone || null, email: email || null, name: name || null, address_raw: address || null }],
-        p_notes: notes || 'Ditambahkan manual',
-        p_save_addresses: !!address,
-        p_status: 'confirmed',
-        p_confidence: 'high'
-      })
-    });
-    closeModal('addSuspectModal');
-    loadSuspects();
-    showToast('Tersimpan');
   } catch(e) { showToast('Error: ' + e.message); }
 }
 
