@@ -1248,11 +1248,12 @@
         if (!res.ok || !data.access_token) throw new Error(data.error_description || data.msg || 'Login failed');
 
         jdSession = {
-          access_token:  data.access_token,
-          refresh_token: data.refresh_token,
-          expires_at:    Date.now() + (data.expires_in || 3600) * 1000
+          access_token:    data.access_token,
+          refresh_token:   data.refresh_token,
+          expires_at:      Date.now() + (data.expires_in || 3600) * 1000, // umur access token (buat auto-refresh)
+          hard_expires_at: Date.now() + JD_SESSION_HOURS * 3600 * 1000     // batas sesi keras (6 jam)
         };
-        sessionStorage.setItem('jd_session', JSON.stringify(jdSession));
+        jdSaveSession();
         document.getElementById('jd-pw').value = '';
         enterDashboard();
       } catch (e) {
@@ -1266,26 +1267,65 @@
     }
 
     function jdLogout() {
-      sessionStorage.removeItem('jd_session');
+      localStorage.removeItem('jd_session');
       jdSession = null;
       document.getElementById('jd-app').style.display = 'none';
       document.getElementById('jd-login').style.display = 'flex';
       document.getElementById('jd-pw').value = '';
     }
 
-    // Auto-login if a still-valid session exists
+    // Sesi disimpan di localStorage (bertahan walau tab/browser ditutup) dengan
+    // batas keras JD_SESSION_HOURS jam. Access token Supabase cuma hidup ~1 jam,
+    // jadi kita auto-refresh pakai refresh_token biar sesi jalan terus sampai batas.
+    var JD_SESSION_HOURS = 6;
+    var jdRefreshing = false;
+    function jdSaveSession() {
+      try { localStorage.setItem('jd_session', JSON.stringify(jdSession)); } catch (e) {}
+    }
+    async function jdRefreshToken() {
+      if (!jdSession || !jdSession.refresh_token || jdRefreshing) return false;
+      jdRefreshing = true;
+      try {
+        var res = await fetch(SB_URL + '/auth/v1/token?grant_type=refresh_token', {
+          method: 'POST',
+          headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: jdSession.refresh_token })
+        });
+        var data = await res.json();
+        if (!res.ok || !data.access_token) return false;
+        jdSession.access_token  = data.access_token;
+        jdSession.refresh_token = data.refresh_token || jdSession.refresh_token;
+        jdSession.expires_at    = Date.now() + (data.expires_in || 3600) * 1000;
+        jdSaveSession();
+        return true;
+      } catch (e) { return false; }
+      finally { jdRefreshing = false; }
+    }
+    // Cek berkala: lewat batas 6 jam -> logout; access token mau abis -> refresh.
+    async function jdRefreshTick() {
+      if (!jdSession) return;
+      if (Date.now() > (jdSession.hard_expires_at || 0)) { jdLogout(); showToast('Sesi 6 jam berakhir — login lagi ya.', true); return; }
+      if (Date.now() > jdSession.expires_at - 5 * 60000) { await jdRefreshToken(); }
+    }
+    setInterval(jdRefreshTick, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) jdRefreshTick(); });
+
+    // Auto-login kalau sesi masih dalam batas 6 jam (refresh token dulu kalau perlu)
     (function restoreSession() {
-      var raw = sessionStorage.getItem('jd_session');
+      var raw = localStorage.getItem('jd_session');
       if (!raw) return;
       try {
         var s = JSON.parse(raw);
-        if (s && s.access_token && s.expires_at > Date.now()) {
+        if (s && s.access_token && (s.hard_expires_at || 0) > Date.now()) {
           jdSession = s;
-          setTimeout(enterDashboard, 0);
+          setTimeout(async function () {
+            if (Date.now() > jdSession.expires_at - 5 * 60000) await jdRefreshToken();
+            enterDashboard();
+          }, 0);
         } else {
-          sessionStorage.removeItem('jd_session');
+          localStorage.removeItem('jd_session');
         }
-      } catch (e) { sessionStorage.removeItem('jd_session'); }
+      } catch (e) { localStorage.removeItem('jd_session'); }
     })();
 
     // ── UTILS ────────────────────────────────────────────────
