@@ -1997,6 +1997,7 @@
         showToast('Token diblokir (di-expired). Link-nya udah mati.');
         loadTokens();
         loadWaitlist(currentPage);
+        loadAllocations();   // slot balik -- token expired keluar dari invited_active
       } catch (e) {
         showToast('Gagal blokir token: ' + e.message, true);
       }
@@ -2120,6 +2121,7 @@
 
         loadTokens();
         loadWaitlist(currentPage);
+        loadAllocations();
 
       } catch(e) {
         showToast('Gagal. Coba lagi.', true);
@@ -2173,6 +2175,7 @@
         clearSelection();
         loadWaitlist(currentPage);
         loadTokens();
+        loadAllocations();   // sisa alokasi langsung berkurang -- token baru = invited_active naik
 
         document.getElementById('jd-modal-email-count').textContent = lastBatchSent.length;
         renderEmailDomainPreview();
