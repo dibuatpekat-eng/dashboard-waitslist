@@ -266,6 +266,7 @@
     .badge-invited { background: #EEF2FF; color: #3730A3; border: 1px solid #C7D2FE; }
     .badge-purchased { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
     .badge-expired { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
+    .badge-wasinvited { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
     .badge-bought { background: var(--bought-bg); color: var(--bought); border: 1px solid var(--bought-border); }
     /* Tanda operator (Shortlist / Aware) -- icon minimalis, digeser ke kanan */
     .jd-mark-row { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding-left: 14px; }
@@ -290,6 +291,7 @@
     .jd-table-waitlist tr { border-left: 3px solid transparent; }
     .jd-table-waitlist tr.jd-row-jastip { border-left-color: var(--flag); }
     .jd-table-waitlist tr.jd-row-bought { border-left-color: var(--bought); }
+    .jd-table-waitlist tr.jd-row-expired { border-left-color: var(--warn); }
     /* ── TOKEN ACTION DROPDOWN ── */
     .jd-token-action { position: relative; display: inline-block; }
     .jd-token-action-btn {
@@ -1562,14 +1564,21 @@
               statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
               statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
             }
+          } else if (row.effective_status === 'expired') {
+            // Pernah diundang tapi expired (ga checkout). Tetap bisa dikirim ulang,
+            // tapi dibedain dari "Eligible" (belum pernah diundang) -- badge amber +
+            // garis tepi amber -- biar operator sadar orang ini udah pernah dapet undangan.
+            rowAccentClass = 'jd-row-expired';
+            statusBadge = '<span class="badge badge-wasinvited">Pernah Diundang · Expired</span>';
+            statusCaption = (row.review_cleared && wasSignal)
+              ? '<span class="jd-flag-detail">Undangan lama expired · ditandai aman — bisa dikirim ulang</span>'
+              : '<span class="jd-flag-detail">Undangan lama ga di-checkout — bisa dikirim ulang</span>';
           } else {
             statusBadge = '<span class="badge badge-ok">Eligible</span>';
             if (row.review_cleared && wasSignal) {
               // Ditinjau operator & ditandai aman -- kasih tau + jalan untuk batal.
               statusCaption = '<span class="jd-flag-detail">Ditandai aman '
                 + '<a href="#" onclick="event.stopPropagation(); jdUnmarkSafe(\'' + row.id + '\'); return false;" style="color:var(--warn,#B4620C);text-decoration:underline;margin-left:2px">batal</a></span>';
-            } else if (row.effective_status === 'expired') {
-              statusCaption = '<span class="jd-flag-detail">Token sebelumnya expired — bisa digenerate lagi</span>';
             }
           }
         } else {
