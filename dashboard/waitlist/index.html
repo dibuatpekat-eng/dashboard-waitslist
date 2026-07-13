@@ -1162,11 +1162,11 @@
         document.getElementById('jd-tab-panel-' + t).classList.toggle('active', t === name);
         document.getElementById('jd-tab-btn-' + t).classList.toggle('active', t === name);
       });
-      // Kartu ringkasan atas itu metrik Waitlist (total/bersih/flagged/undangan) —
-      // nampilinnya lagi di tab lain cuma bikin bingung karena kelihatan kayak
-      // ada 2 set angka yang beda utk hal yang sama.
+      // Kartu ringkasan atas (metrik Waitlist) sekarang tampil di SEMUA tab —
+      // operator minta tetap keliatan pas di tab Token juga. Klik kartu otomatis
+      // pindah ke tab Waitlist + filter (lihat filterByStat).
       var mainStats = document.getElementById('jd-main-stats');
-      if (mainStats) mainStats.style.display = (name === 'waitlist') ? '' : 'none';
+      if (mainStats) mainStats.style.display = '';
     }
 
     // Klik kartu ringkasan -> filter tabel Waitlist sesuai kartu yg diklik.
