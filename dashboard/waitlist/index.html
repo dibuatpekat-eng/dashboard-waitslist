@@ -1887,9 +1887,17 @@
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
         // Penanda apakah email akses sudah dikirim (email_sent_at). Token yang
         // sudah dipakai gak perlu ditandai.
-        var emailCap = row.is_used ? '' : (row.email_sent_at
-          ? '<div style="font-size:10px;color:var(--text-3);margin-top:4px;white-space:nowrap">✉ Email terkirim</div>'
-          : '<div style="font-size:10px;color:var(--flag);margin-top:4px;white-space:nowrap;font-weight:500">✉ Email belum dikirim</div>');
+        var emailCap = '';
+        if (!row.is_used) {
+          if (row.email_sent_at) {
+            emailCap = '<div style="font-size:10px;color:var(--text-3);margin-top:4px;white-space:nowrap">✉ Email terkirim</div>';
+          } else if (row.email_failed_at) {
+            // GAGAL kirim (beda dari "belum dikirim") -- badge merah biar nonjol, tetap bisa "Kirim email" (= coba lagi).
+            emailCap = '<div style="font-size:10px;color:var(--flag);background:var(--flag-bg);border:1px solid var(--flag-border);border-radius:4px;padding:1px 6px;margin-top:4px;display:inline-block;white-space:nowrap;font-weight:600">⚠ Gagal kirim — coba lagi</div>';
+          } else {
+            emailCap = '<div style="font-size:10px;color:var(--flag);margin-top:4px;white-space:nowrap;font-weight:500">✉ Email belum dikirim</div>';
+          }
+        }
 
         // "Reset & kirim ulang" dihapus -- satu-satunya beda dari "Generate
         // token baru" adalah dia pertahanin link lama, tapi karena dua-duanya
@@ -2202,12 +2210,13 @@
       var sent = 0, failed = 0;
       var sentIds = [];      // waitlist_id yang emailnya BENERAN sukses -> baru ini yg jadi 'invited'
       var sentTokens = [];   // token yang emailnya sukses -> ditandai email_sent_at
+      var failedTokens = []; // token yang GAGAL kirim -> ditandai email_failed_at
 
       for (var i = 0; i < lastBatchSent.length; i++) {
         var t = lastBatchSent[i];
         var okSend = await jdSendOneAccessEmail(t);
         if (okSend) { sent++; sentIds.push(t.waitlist_id); sentTokens.push(t.token); }
-        else { failed++; }
+        else { failed++; failedTokens.push(t.token); }
         if (i < lastBatchSent.length - 1) await new Promise(function(r) { setTimeout(r, 200); });
       }
 
@@ -2224,7 +2233,14 @@
         await fetch(SB_URL + '/rest/v1/launch_tokens?token=in.(' + sentTokens.join(',') + ')', {
           method: 'PATCH',
           headers: authHeaders({ 'Prefer': 'return=minimal' }),
-          body: JSON.stringify({ email_sent_at: new Date().toISOString() })
+          body: JSON.stringify({ email_sent_at: new Date().toISOString(), email_failed_at: null })
+        });
+      }
+      if (failedTokens.length) {
+        await fetch(SB_URL + '/rest/v1/launch_tokens?token=in.(' + failedTokens.join(',') + ')', {
+          method: 'PATCH',
+          headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ email_failed_at: new Date().toISOString() })
         });
       }
 
@@ -2265,10 +2281,20 @@
       if (t.is_used) { showToast('Token sudah dipakai — tidak perlu kirim email', true); return; }
       showToast('Mengirim email...');
       var ok = await jdSendOneAccessEmail(t);
-      if (!ok) { showToast('Gagal kirim email. Coba lagi.', true); return; }
+      if (!ok) {
+        // Tandai GAGAL (persist) biar kebedain dari "belum dikirim".
+        await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + encodeURIComponent(token), {
+          method: 'PATCH', headers: authHeaders({ 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ email_failed_at: new Date().toISOString() })
+        });
+        showToast('Gagal kirim email. Coba lagi.', true);
+        loadTokens();
+        return;
+      }
+      // Sukses -> catat terkirim + hapus penanda gagal (kalau ada percobaan gagal sebelumnya).
       await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + encodeURIComponent(token), {
         method: 'PATCH', headers: authHeaders({ 'Prefer': 'return=minimal' }),
-        body: JSON.stringify({ email_sent_at: new Date().toISOString() })
+        body: JSON.stringify({ email_sent_at: new Date().toISOString(), email_failed_at: null })
       });
       await fetch(SB_URL + '/rest/v1/launch_waitlist?id=eq.' + t.waitlist_id, {
         method: 'PATCH', headers: authHeaders({ 'Prefer': 'return=minimal' }),
