@@ -713,6 +713,13 @@
         <div class="jd-section-header">
           <span class="jd-section-title">Token Aktif <span style="font-weight:400;font-size:11px;color:var(--text-3)">— subset dari Waitlist yang sudah punya token</span></span>
           <div class="jd-controls">
+            <select id="jd-token-filter" onchange="jdSetTokenStatusFilter(this.value)" title="Filter status token">
+              <option value="">Semua Status</option>
+              <option value="invited">Aktif</option>
+              <option value="review">Segera Expired</option>
+              <option value="purchased">Dipakai</option>
+              <option value="expired">Expired</option>
+            </select>
             <select id="jd-token-sort-select" onchange="jdSetTokenSortFromSelect(this.value)">
               <option value="created_at:desc">Urutkan: Terbaru dibuat</option>
               <option value="created_at:asc">Urutkan: Terlama dibuat</option>
@@ -1911,6 +1918,9 @@
       var hint = document.getElementById('jd-modal-expiry-hint');
       if (hint) hint.textContent = 'expired ' + fmtDate(exp.toISOString());
     }
+    var tokenStatusFilter = '';   // '' | invited | review | purchased | expired
+    function jdSetTokenStatusFilter(v) { tokenStatusFilter = v; loadTokens(); }
+
     async function loadTokens() {
       renderSortIndicators('jd-sort-ind-tok-', tokenSort, ['email', 'created_at', 'expires_at']);
       var tbody = document.getElementById('jd-tokens-body');
@@ -1927,13 +1937,15 @@
 
       var pMap = { rhea: 'Rhea', phi: 'Phi' };
       var countActive = 0, countUsed = 0, countExpired = 0;
-      tbody.innerHTML = result.data.map(function(row) {
+      var tokensHtml = result.data.map(function(row) {
         var expired = new Date(row.expires_at) < new Date();
         var hoursLeft = (new Date(row.expires_at) - new Date()) / 3600000;
         var expiringSoon = !row.is_used && !expired && hoursLeft <= 6;
         var status  = row.is_used ? 'purchased' : expired ? 'expired' : expiringSoon ? 'review' : 'invited';
         var label   = row.is_used ? 'Dipakai' : expired ? 'Expired' : expiringSoon ? 'Segera Expired' : 'Aktif';
         if (row.is_used) { countUsed++; } else if (expired) { countExpired++; } else { countActive++; }
+        // Filter status (client-side) -- stats di atas tetap ngitung SEMUA token.
+        if (tokenStatusFilter && status !== tokenStatusFilter) return '';
         // Penanda apakah email akses sudah dikirim (email_sent_at). Token yang
         // sudah dipakai gak perlu ditandai.
         var emailCap = '';
@@ -1991,6 +2003,7 @@
           '<td data-label="" class="jd-card-collapse-hint"></td>' +
           '</tr>';
       }).join('');
+      tbody.innerHTML = tokensHtml || '<tr><td colspan="8"><div class="jd-empty">Tidak ada token dengan status ini</div></td></tr>';
 
       document.getElementById('jd-token-stat-active').textContent  = countActive;
       document.getElementById('jd-token-stat-used').textContent    = countUsed;
