@@ -2461,9 +2461,10 @@
         ALLOC_VARIANTS.filter(function(v) { return v.product === prod; }).forEach(function(v) {
           var d = perSku[v.product + '|' + v.color + '|' + v.size] || { allocated: 0, invited: 0, bought: 0, expiredBack: 0 };
           var total = d.allocated, used = d.invited + d.bought;
-          var remaining = Math.max(0, total - used);
+          var remaining = total - used;   // bisa MINUS kalau over-alokasi (undangan+beli > alokasi)
           var pct = total > 0 ? Math.min(100, Math.round(used / total * 100)) : 0;
-          var isFull = total > 0 && remaining === 0;
+          var isOver = remaining < 0;
+          var isFull = total > 0 && remaining <= 0;   // penuh (0) atau over (minus) -> merah
 
           html += '<div class="jd-alloc-card"' + (total === 0 ? ' style="opacity:.5"' : '') + '>';
           html += '<div class="jd-alloc-label">' + (cMap[v.color] || v.color) + ' · ' + (sMap[v.size] || v.size) + '</div>';
@@ -2482,6 +2483,7 @@
           html += '<span style="font-size:10px;color:var(--text-3)">Invited: <strong style="color:var(--text-2)">' + d.invited + '</strong></span>';
           html += '<span style="font-size:10px;color:var(--text-3)">Beli: <strong style="color:var(--ok)">' + d.bought + '</strong></span>';
           if (d.expiredBack > 0) html += '<span style="font-size:10px;color:var(--warn,#B4620C)" title="Token expired tanpa dipakai — slot balik ke sisa">🔄 ' + d.expiredBack + '</span>';
+          if (isOver) html += '<span style="font-size:10px;color:var(--flag);font-weight:600" title="Undangan aktif + terjual melebihi alokasi. Slot balik otomatis kalau ada yang expired/dibatalkan.">⚠ over ' + (-remaining) + '</span>';
           html += '</div>';
           html += '</div>';
         });
