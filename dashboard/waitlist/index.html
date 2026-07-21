@@ -278,6 +278,11 @@
     .jd-mark-btn.on-star  { border-color: #E3C766; color: #C8961E; background: #FDF7E6; }
     .jd-mark-btn.on-star svg path { fill: currentColor; }
     .jd-mark-btn.on-aware { border-color: var(--flag-border); color: var(--flag); background: var(--flag-bg); }
+    /* Chip "Member" = sinyal OTOMATIS (bukan tombol), sengaja beda bentuk & warna
+       dari tanda manual Shortlist (bintang emas) / Aware (merah). Teal belum kepakai. */
+    .jd-loyal-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
+      color: #0F6B63; background: #E6F5F3; border: 1px solid #9AD3CC; border-radius: 3px; }
     .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
     .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 440px; }
     .jd-flag-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -629,6 +634,9 @@
                 <option value="mark:aware">Aware</option>
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
+              <optgroup label="Pelanggan">
+                <option value="loyal:1">Member (pernah beli berulang)</option>
+              </optgroup>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
               <option value="">Semua Variasi</option>
@@ -872,6 +880,7 @@
     var markFilter = '';          // '' | 'shortlisted' | 'aware' | 'none'
     var waitlistStageFilter = ''; // '' | pending | invited | purchased | expired
     var waitlistVariantFilter = ''; // '' | 'product|color|size' -- filter tabel per variasi (8 jenis)
+    var loyalFilter = false;        // true = tampilkan hanya Member (pelanggan berulang)
     // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
     var MARK_ICON = {
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
@@ -889,8 +898,10 @@
       cardFlagFilter = '';
       waitlistStageFilter = '';
       markFilter = '';
+      loyalFilter = false;
       if (v.indexOf('stage:') === 0) waitlistStageFilter = v.slice(6);
       else if (v.indexOf('mark:') === 0) markFilter = v.slice(5);
+      else if (v.indexOf('loyal:') === 0) loyalFilter = true;
       loadWaitlist(1);
     }
     // Filter per variasi (product|color|size). Independen dari filter Tahap/Tanda,
@@ -1186,6 +1197,7 @@
       cardFlagFilter = '';
       waitlistStageFilter = '';
       markFilter = '';
+      loyalFilter = false;
       statusSel.value = '';
       if (which === 'clean')        { cardFlagFilter = 'clean'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending'; }
       else if (which === 'review')  { cardFlagFilter = 'review'; }
@@ -1209,7 +1221,7 @@
     function jdViewInWaitlist(email) {
       switchTab('waitlist');
       document.getElementById('jd-filter-status').value = '';
-      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = '';
+      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false;
       var vSel = document.getElementById('jd-filter-variant'); if (vSel) vSel.value = '';
       document.getElementById('jd-search-input').value = email;
       loadWaitlist(1);
@@ -1537,6 +1549,7 @@
         var vf = waitlistVariantFilter.split('|');
         q += '&product=eq.' + vf[0] + '&color=eq.' + vf[1] + '&size=eq.' + vf[2];
       }
+      if (loyalFilter) q += '&is_loyal=eq.true';
       if (search) {
         // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
         // (XSS-escape) di seluruh scope loadWaitlist, bikin render baris error.
@@ -1653,7 +1666,12 @@
         var mk = row.mark || '';
         // Tanda cuma di baris yang masih actionable (belum diproses) -- biar fokus.
         var markHtml = isActionable ? '<span class="jd-mark-row" data-mid="' + row.id + '">' + jdMarkBtns(row.id, mk) + '</span>' : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + actionBtn + markHtml + '</div>' + statusCaption;
+        // Chip Member = deteksi OTOMATIS (pelanggan berulang), tampil di status apa pun.
+        // Sengaja bukan tombol -- beda dari tanda manual Shortlist/Aware.
+        var loyalChip = row.is_loyal
+          ? '<span class="jd-loyal-chip" title="Pelanggan berulang — ' + (row.loyal_orders || 0) + ' order · ' + (row.loyal_bulan || 0) + ' bulan aktif · ' + (row.loyal_produk || 0) + ' produk berbeda">Member · ' + (row.loyal_orders || 0) + '×</span>'
+          : '';
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
