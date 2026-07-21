@@ -292,6 +292,10 @@
     .jd-member-head:hover { background: #FCFBF9; }
     .jd-member-email { font-size: 13px; color: var(--text); }
     .jd-member-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+    .jd-member-alias { font-size: 10.5px; color: var(--text-3); margin-top: 4px; line-height: 1.6; }
+    .jd-alias-tag { display: inline-block; padding: 1px 6px; margin: 0 4px 3px 0; border-radius: 3px;
+      background: #F1EFEA; border: 1px solid var(--border); color: var(--text-2); }
+    .jd-alias-label { color: var(--text-3); letter-spacing: 0.04em; margin-right: 4px; }
     .jd-member-orders { background: #FCFBF9; border-top: 1px solid var(--border); padding: 6px 20px 10px; }
     .jd-member-order { display: flex; gap: 10px; align-items: baseline; padding: 5px 0;
       font-size: 11.5px; color: var(--text-2); border-bottom: 1px dashed var(--border); }
@@ -2548,12 +2552,31 @@
     }
 
     function memberCardHtml(m) {
-      var email = (m.emails || [])[0] || '—';
-      var phone = (m.phones || [])[0] || '';
       var w = m._w;
+      var allE = (m.emails || []).slice();
+      var allP = (m.phones || []).slice();
+      // Judul card pakai identitas yang dipakai mendaftar waitlist, bukan urutan array.
+      if (w) {
+        var wE = jdNormEmailJS(w.email), wP = jdNormPhoneJS(w.phone);
+        var iE = allE.indexOf(wE); if (iE > 0) allE.unshift(allE.splice(iE, 1)[0]);
+        var iP = allP.indexOf(wP); if (iP > 0) allP.unshift(allP.splice(iP, 1)[0]);
+      }
+      var email = allE[0] || '—';
+      var phone = allP[0] || '';
       var wlTag = w
         ? '<span class="badge badge-' + (w.effective_status || 'pending') + '">' + (STATUS_LABELS[w.effective_status] || w.effective_status) + '</span>'
         : '';
+      // Cluster bisa berisi >1 email / >1 HP (orang yang sama pakai akun berbeda).
+      // Tampilkan sisanya supaya operator tahu ini hasil penggabungan.
+      var aliasE = allE.slice(1);
+      var aliasP = allP.slice(1);
+      var aliasHtml = '';
+      if (aliasE.length || aliasP.length) {
+        aliasHtml = '<div class="jd-member-alias"><span class="jd-alias-label">JUGA PAKAI:</span>' +
+          aliasE.map(function (x) { return '<span class="jd-alias-tag">' + esc(x) + '</span>'; }).join('') +
+          aliasP.map(function (x) { return '<span class="jd-alias-tag">' + esc(fmtPhone(x)) + '</span>'; }).join('') +
+          '</div>';
+      }
       var open = (memberOpenKey === m.identity_key);
       var keyAttr = esc(m.identity_key);
       var keyJs   = String(m.identity_key).replace(/['\\]/g, '\\$&');
@@ -2563,7 +2586,7 @@
             '<div class="jd-member-email">' + esc(email) + '</div>' +
             '<div class="jd-member-sub">' + (phone ? fmtPhone(phone) : '—') + ' · ' + m.jml_order + ' order · ' +
               m.bulan_aktif + ' bulan · ' + m.produk_beda + ' produk berbeda · ' + esc(m.order_pertama || '') + ' → ' + esc(m.order_terakhir || '') +
-            '</div>' +
+            '</div>' + aliasHtml +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' + wlTag +
             (w ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + (w.email || '').replace(/['\\]/g, '\\$&') + '\')">Lihat di Waitlist</button>' : '') +
