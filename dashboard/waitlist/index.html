@@ -284,6 +284,17 @@
       font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer;
       color: #0F6B63; background: #E6F5F3; border: 1px solid #9AD3CC; border-radius: 3px; }
     .jd-loyal-chip:hover { background: #D3ECE8; border-color: #6FBFB5; }
+    /* Chip Duplikat -- warna peringatan, sengaja beda dari Member (teal) & Shortlist (emas). */
+    .jd-dup-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer;
+      color: #8A4B08; background: #FCF0E2; border: 1px solid #E3B57F; border-radius: 3px; }
+    .jd-dup-chip:hover { background: #F7E3CB; border-color: #D19A55; }
+    /* Kembarannya sudah dapat slot -> lebih tegas, ini yang paling perlu dilihat operator. */
+    .jd-dup-chip.jd-dup-hot { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
+    .jd-dup-chip.jd-dup-hot:hover { background: #F6D8D4; border-color: #CE8079; }
+    .jd-dup-row { display: flex; gap: 10px; align-items: baseline; padding: 7px 0;
+      border-bottom: 1px dashed var(--border); font-size: 12.5px; }
+    .jd-dup-why { font-size: 10.5px; color: var(--text-3); letter-spacing: .03em; }
     /* Tab Member */
     .jd-member-card { border-bottom: 1px solid var(--border); }
     .jd-member-card:last-child { border-bottom: none; }
@@ -891,6 +902,23 @@
       <div class="jd-modal-actions">
         <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-edit')">Batal</button>
         <button class="jd-btn jd-btn-dark" onclick="saveEditEntry()">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="jd-modal-overlay" id="jd-modal-dup">
+    <div class="jd-modal" style="max-width:600px">
+      <div class="jd-modal-title">Terindikasi Pendaftaran Ulang</div>
+      <div class="jd-modal-body">
+        <div id="jd-dup-head" style="margin-bottom:14px"></div>
+        <div id="jd-dup-list"></div>
+        <div style="margin-top:16px;font-size:11.5px;color:var(--text-3);line-height:1.7">
+          Ini indikasi otomatis, bukan vonis. Nama mirip bisa saja memang dua orang berbeda —
+          periksa dulu sebelum mengambil keputusan.
+        </div>
+      </div>
+      <div class="jd-modal-actions">
+        <button class="jd-btn jd-btn-outline" onclick="closeModal('jd-modal-dup')">Tutup</button>
       </div>
     </div>
   </div>
@@ -1716,7 +1744,16 @@
         var loyalChip = row.is_loyal
           ? '<span class="jd-loyal-chip" onclick="event.stopPropagation(); jdOpenMember(\'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="Pelanggan berulang — ' + (row.loyal_orders || 0) + ' order · ' + (row.loyal_bulan || 0) + ' bulan aktif · ' + (row.loyal_produk || 0) + ' produk berbeda. Klik untuk lihat riwayat belanjanya.">Member</span>'
           : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + actionBtn + markHtml + '</div>' + statusCaption;
+        // Chip Duplikat = indikasi orang yang sama daftar ulang pakai email/HP lain
+        // (nyiasatin blokir 1 email + 1 HP). Deteksi otomatis, keputusan tetap di operator.
+        var dupChip = (row.dup_count > 0)
+          ? '<span class="jd-dup-chip' + (row.dup_claimed ? ' jd-dup-hot' : '') + '" onclick="event.stopPropagation(); jdOpenDup(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' +
+            (row.dup_claimed
+              ? 'Kembarannya SUDAH dapat undangan / sudah beli. Klik untuk lihat.'
+              : 'Terindikasi orang yang sama dengan ' + row.dup_count + ' entry lain. Klik untuk lihat.') +
+            '">Duplikat' + (row.dup_count > 1 ? ' ' + row.dup_count : '') + '</span>'
+          : '';
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -2431,6 +2468,45 @@
       showToast('Email berhasil terkirim');
       loadTokens();
       loadWaitlist(currentPage);
+    }
+
+    // ── DUPLIKAT (indikasi pendaftaran ulang) ────────────────
+    // Satu orang bisa daftar >1x pakai email/HP berbeda untuk lolos blokir.
+    // Dideteksi otomatis di DB (launch_dup_pairs); di sini cuma menampilkan.
+    async function jdOpenDup(id, email) {
+      openModal('jd-modal-dup');
+      var head = document.getElementById('jd-dup-head');
+      var list = document.getElementById('jd-dup-list');
+      head.innerHTML = '<strong>' + esc(email || '—') + '</strong>';
+      list.innerHTML = '<div class="jd-loading">Memuat...</div>';
+      try {
+        var r = await sbQuery('launch_dup_pairs?waitlist_id=eq.' + encodeURIComponent(id) +
+                              '&select=*&order=bobot.desc,jarak_menit.asc&limit=25');
+        var rows = r.data || [];
+        if (!rows.length) { list.innerHTML = '<div class="jd-empty">Tidak ada kembaran.</div>'; return; }
+        var adaYgSudah = rows.some(function (d) { return d.twin_status === 'invited' || d.twin_status === 'purchased'; });
+        head.innerHTML = '<strong>' + esc(email || '—') + '</strong> terindikasi orang yang sama dengan ' +
+          rows.length + ' entry lain:' +
+          (adaYgSudah
+            ? '<div style="margin-top:8px;padding:8px 10px;background:#FBE9E7;border:1px solid #E0A6A0;color:#8C1D18;font-size:12px">'
+              + 'Salah satu kembarannya sudah dapat undangan atau sudah beli. Kalau entry ini ikut dialokasikan, orangnya dapat slot dobel.</div>'
+            : '');
+        list.innerHTML = rows.map(function (d) {
+          var jarak = (d.jarak_menit != null)
+            ? (d.jarak_menit < 60 ? d.jarak_menit + ' menit' : Math.round(d.jarak_menit / 60) + ' jam')
+            : '—';
+          return '<div class="jd-dup-row">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="word-break:break-all">' + esc(d.twin_email || '—') + '</div>' +
+              '<div class="jd-dup-why">' + esc(d.alasan || '') + ' · selisih daftar ' + jarak + '</div>' +
+            '</div>' +
+            '<span class="badge badge-' + (d.twin_status || 'pending') + '">' +
+              (STATUS_LABELS[d.twin_status] || d.twin_status || '—') + '</span>' +
+          '</div>';
+        }).join('');
+      } catch (e) {
+        list.innerHTML = '<div class="jd-empty">Gagal memuat data.</div>';
+      }
     }
 
     // ── MEMBER (pelanggan berulang) ──────────────────────────
