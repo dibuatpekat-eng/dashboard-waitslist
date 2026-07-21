@@ -777,13 +777,15 @@
       <div class="jd-tab-panel" id="jd-tab-panel-member">
         <div class="jd-section">
           <div class="jd-section-header">
-            <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— pernah beli ≥2x, terdeteksi otomatis dari riwayat order</span></span>
+            <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— entry waitlist yang cocok dengan database pembelian (≥2x beli, bukan jastip)</span></span>
             <div class="jd-controls">
               <input type="text" id="jd-member-search" placeholder="Cari email / no. HP..." oninput="renderMembers()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
               <select id="jd-member-filter" onchange="jdSetMemberFilter(this.value)">
-                <option value="all">Semua</option>
-                <option value="waitlist">Sudah di waitlist</option>
-                <option value="unreg">Belum daftar</option>
+                <option value="all">Semua Tahap</option>
+                <option value="pending">Belum Diproses</option>
+                <option value="invited">Undangan Terkirim</option>
+                <option value="expired">Expired</option>
+                <option value="purchased">Sudah Beli</option>
               </select>
               <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Hitung ulang dari data order terbaru">↻ Refresh data</button>
             </div>
@@ -2478,8 +2480,8 @@
       if (!el) return;
       el.innerHTML = '<div class="jd-loading">Memuat...</div>';
       try {
-        var a = await sbQuery('launch_loyal_customers?loyal=eq.true&select=*&order=skor.desc&limit=500');
-        var b = await sbQuery('launch_waitlist_view?is_loyal=eq.true&select=id,email,phone,effective_status&limit=500');
+        var a = await sbQuery('launch_loyal_customers?loyal=eq.true&select=*&order=skor.desc&limit=2000');
+        var b = await sbQuery('launch_waitlist_view?is_loyal=eq.true&select=id,email,phone,effective_status&limit=2000');
         memberRows     = a.data || [];
         memberWaitlist = b.data || [];
         if (memberFocusEmail) {
@@ -2516,16 +2518,17 @@
       var qEl = document.getElementById('jd-member-search');
       var q = (qEl ? qEl.value : '').trim().toLowerCase();
 
+      // Tab ini HANYA menampilkan entry waitlist yang cocok dengan database
+      // pembelian. Yang belum daftar waitlist tidak ditampilkan di sini.
       memberRows.forEach(function (m) { m._w = memberWaitlistMatch(m); });
-      var inWl = memberRows.filter(function (m) { return m._w; }).length;
+      var matched = memberRows.filter(function (m) { return m._w; });
+      var belumProses = matched.filter(function (m) { return m._w.effective_status === 'pending'; }).length;
       document.getElementById('jd-member-summary').innerHTML =
-        '<strong>' + memberRows.length + '</strong> member · <strong>' + inWl + '</strong> sudah di waitlist · <strong>' +
-        (memberRows.length - inWl) + '</strong> belum daftar ' +
-        '<span style="color:var(--text-3)">— terdeteksi otomatis (≥2x beli, bukan pola jastip). Keputusan mengundang tetap di kamu.</span>';
+        '<strong>' + matched.length + '</strong> member terdaftar di waitlist · <strong>' + belumProses + '</strong> belum diproses ' +
+        '<span style="color:var(--text-3)">— dicocokkan otomatis ke database pembelian (≥2x beli, bukan pola jastip). Keputusan mengundang tetap di kamu.</span>';
 
-      var list = memberRows.filter(function (m) {
-        if (memberFilter === 'waitlist' && !m._w) return false;
-        if (memberFilter === 'unreg'    &&  m._w) return false;
+      var list = matched.filter(function (m) {
+        if (memberFilter !== 'all' && m._w.effective_status !== memberFilter) return false;
         if (q) {
           var hay = ((m.emails || []).join(' ') + ' ' + (m.phones || []).join(' ')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
@@ -2550,7 +2553,7 @@
       var w = m._w;
       var wlTag = w
         ? '<span class="badge badge-' + (w.effective_status || 'pending') + '">' + (STATUS_LABELS[w.effective_status] || w.effective_status) + '</span>'
-        : '<span class="badge badge-expired">Belum daftar</span>';
+        : '';
       var open = (memberOpenKey === m.identity_key);
       var keyAttr = esc(m.identity_key);
       var keyJs   = String(m.identity_key).replace(/['\\]/g, '\\$&');
