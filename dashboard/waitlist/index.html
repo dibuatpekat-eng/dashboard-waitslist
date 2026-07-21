@@ -281,8 +281,23 @@
     /* Chip "Member" = sinyal OTOMATIS (bukan tombol), sengaja beda bentuk & warna
        dari tanda manual Shortlist (bintang emas) / Aware (merah). Teal belum kepakai. */
     .jd-loyal-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
-      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer;
       color: #0F6B63; background: #E6F5F3; border: 1px solid #9AD3CC; border-radius: 3px; }
+    .jd-loyal-chip:hover { background: #D3ECE8; border-color: #6FBFB5; }
+    /* Tab Member */
+    .jd-member-card { border-bottom: 1px solid var(--border); }
+    .jd-member-card:last-child { border-bottom: none; }
+    .jd-member-head { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 13px 20px; cursor: pointer; }
+    .jd-member-head:hover { background: #FCFBF9; }
+    .jd-member-email { font-size: 13px; color: var(--text); }
+    .jd-member-sub { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+    .jd-member-orders { background: #FCFBF9; border-top: 1px solid var(--border); padding: 6px 20px 10px; }
+    .jd-member-order { display: flex; gap: 10px; align-items: baseline; padding: 5px 0;
+      font-size: 11.5px; color: var(--text-2); border-bottom: 1px dashed var(--border); }
+    .jd-member-order:last-child { border-bottom: none; }
+    .jd-mo-date { color: var(--text-3); white-space: nowrap; min-width: 88px; }
+    .jd-mo-no { color: var(--text-3); white-space: nowrap; min-width: 58px; }
     .badge-review { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
     .jd-flag-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 440px; }
     .jd-flag-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -608,6 +623,7 @@
       <div class="jd-tabs">
         <button class="jd-tab active" id="jd-tab-btn-waitlist" onclick="switchTab('waitlist')">Waitlist</button>
         <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
+        <button class="jd-tab" id="jd-tab-btn-member" onclick="switchTab('member')">Member</button>
         <a class="jd-tab" href="https://dashboard-jastip.vercel.app" target="_blank" rel="noopener" title="Buka Dashboard Jastip di tab baru untuk cek manual" style="text-decoration:none">Dashboard Jastip&nbsp;↗</a>
       </div>
 
@@ -755,6 +771,26 @@
           </table>
         </div>
       </div>
+      </div>
+
+      <!-- MEMBER -->
+      <div class="jd-tab-panel" id="jd-tab-panel-member">
+        <div class="jd-section">
+          <div class="jd-section-header">
+            <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— pernah beli ≥2x, terdeteksi otomatis dari riwayat order</span></span>
+            <div class="jd-controls">
+              <input type="text" id="jd-member-search" placeholder="Cari email / no. HP..." oninput="renderMembers()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
+              <select id="jd-member-filter" onchange="jdSetMemberFilter(this.value)">
+                <option value="all">Semua</option>
+                <option value="waitlist">Sudah di waitlist</option>
+                <option value="unreg">Belum daftar</option>
+              </select>
+              <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Hitung ulang dari data order terbaru">↻ Refresh data</button>
+            </div>
+          </div>
+          <div style="padding:12px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)" id="jd-member-summary">—</div>
+          <div id="jd-member-body"><div class="jd-loading">Memuat...</div></div>
+        </div>
       </div>
 
       <!-- DATABASE JASTIP -->
@@ -1177,11 +1213,14 @@
     }
 
     function switchTab(name) {
-      // Tab 'jastip' (Database Jastip) sudah dihapus -> cukup waitlist & tokens.
-      ['waitlist', 'tokens'].forEach(function(t) {
-        document.getElementById('jd-tab-panel-' + t).classList.toggle('active', t === name);
-        document.getElementById('jd-tab-btn-' + t).classList.toggle('active', t === name);
+      // Tab 'jastip' (Database Jastip) sudah dihapus -> waitlist, tokens, member.
+      ['waitlist', 'tokens', 'member'].forEach(function(t) {
+        var panel = document.getElementById('jd-tab-panel-' + t);
+        var btn   = document.getElementById('jd-tab-btn-' + t);
+        if (panel) panel.classList.toggle('active', t === name);
+        if (btn)   btn.classList.toggle('active', t === name);
       });
+      if (name === 'member') loadMembers();
       // Kartu ringkasan atas (metrik Waitlist) sekarang tampil di SEMUA tab —
       // operator minta tetap keliatan pas di tab Token juga. Klik kartu otomatis
       // pindah ke tab Waitlist + filter (lihat filterByStat).
@@ -1669,7 +1708,7 @@
         // Chip Member = deteksi OTOMATIS (pelanggan berulang), tampil di status apa pun.
         // Sengaja bukan tombol -- beda dari tanda manual Shortlist/Aware.
         var loyalChip = row.is_loyal
-          ? '<span class="jd-loyal-chip" title="Pelanggan berulang — ' + (row.loyal_orders || 0) + ' order · ' + (row.loyal_bulan || 0) + ' bulan aktif · ' + (row.loyal_produk || 0) + ' produk berbeda">Member · ' + (row.loyal_orders || 0) + '×</span>'
+          ? '<span class="jd-loyal-chip" onclick="event.stopPropagation(); jdOpenMember(\'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="Pelanggan berulang — ' + (row.loyal_orders || 0) + ' order · ' + (row.loyal_bulan || 0) + ' bulan aktif · ' + (row.loyal_produk || 0) + ' produk berbeda. Klik untuk lihat riwayat belanjanya.">Member</span>'
           : '';
         var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + actionBtn + markHtml + '</div>' + statusCaption;
 
@@ -2386,6 +2425,177 @@
       showToast('Email berhasil terkirim');
       loadTokens();
       loadWaitlist(currentPage);
+    }
+
+    // ── MEMBER (pelanggan berulang) ──────────────────────────
+    // Deteksi OTOMATIS dari riwayat order (view launch_loyal_customers).
+    // Keputusan mengundang tetap di operator -- tab ini cuma menyajikan bukti.
+    var memberFilter     = 'all';   // all | waitlist | unreg
+    var memberRows       = [];      // hasil launch_loyal_customers (loyal=true)
+    var memberWaitlist   = [];      // entry waitlist yang is_loyal (buat pencocokan)
+    var memberOpenKey    = null;    // identity_key kartu yang sedang dibuka
+    var memberFocusEmail = null;    // diisi saat chip "Member" di tab Waitlist diklik
+
+    // Cerminan jd_normalize_email / jd_normalize_phone di sisi klien.
+    function jdNormEmailJS(e) {
+      e = (e || '').trim().toLowerCase();
+      if (!e || e.indexOf('@') < 0) return e || '';
+      var lp = e.split('@')[0], dp = e.split('@')[1];
+      lp = lp.split('+')[0];
+      if (dp === 'gmail.com' || dp === 'googlemail.com') { lp = lp.replace(/\./g, ''); dp = 'gmail.com'; }
+      return lp + '@' + dp;
+    }
+    function jdNormPhoneJS(p) {
+      var d = (p || '').replace(/[^0-9]/g, '');
+      if (!d) return '';
+      if (d.charAt(0) === '0') return '62' + d.slice(1);
+      if (d.slice(0, 2) === '62') return d;
+      if (d.charAt(0) === '8') return '62' + d;
+      return d;
+    }
+
+    function jdSetMemberFilter(v) { memberFilter = v; renderMembers(); }
+
+    // Dipanggil dari chip "Member" di tab Waitlist -> pindah tab & buka kartunya.
+    function jdOpenMember(email) {
+      memberFocusEmail = jdNormEmailJS(email);
+      switchTab('member');
+    }
+
+    async function jdRefreshMembers() {
+      showToast('Menghitung ulang data member...');
+      try {
+        // sbQuery TIDAK throw saat non-2xx -> cek status supaya toast-nya jujur.
+        var r = await sbQuery('rpc/launch_refresh_loyal', { method: 'POST', body: '{}' });
+        if (r.status >= 200 && r.status < 300) showToast('Data member diperbarui');
+        else showToast('Gagal refresh (status ' + r.status + ')', true);
+      } catch (e) { showToast('Gagal refresh: ' + e.message, true); }
+      loadMembers();
+    }
+
+    async function loadMembers() {
+      var el = document.getElementById('jd-member-body');
+      if (!el) return;
+      el.innerHTML = '<div class="jd-loading">Memuat...</div>';
+      try {
+        var a = await sbQuery('launch_loyal_customers?loyal=eq.true&select=*&order=skor.desc&limit=500');
+        var b = await sbQuery('launch_waitlist_view?is_loyal=eq.true&select=id,email,phone,effective_status&limit=500');
+        memberRows     = a.data || [];
+        memberWaitlist = b.data || [];
+        if (memberFocusEmail) {
+          for (var i = 0; i < memberRows.length; i++) {
+            if ((memberRows[i].emails || []).map(jdNormEmailJS).indexOf(memberFocusEmail) !== -1) {
+              memberOpenKey = memberRows[i].identity_key;
+              memberFilter = 'all';
+              var fs = document.getElementById('jd-member-filter'); if (fs) fs.value = 'all';
+              break;
+            }
+          }
+          memberFocusEmail = null;
+        }
+        renderMembers();
+      } catch (e) {
+        el.innerHTML = '<div class="jd-empty">Gagal memuat: ' + esc(e.message) + '</div>';
+      }
+    }
+
+    function memberWaitlistMatch(m) {
+      var emails = (m.emails || []).map(jdNormEmailJS);
+      var phones = (m.phones || []).map(jdNormPhoneJS);
+      for (var i = 0; i < memberWaitlist.length; i++) {
+        var w = memberWaitlist[i];
+        if (emails.indexOf(jdNormEmailJS(w.email)) !== -1) return w;
+        if (phones.indexOf(jdNormPhoneJS(w.phone)) !== -1) return w;
+      }
+      return null;
+    }
+
+    function renderMembers() {
+      var el = document.getElementById('jd-member-body');
+      if (!el) return;
+      var qEl = document.getElementById('jd-member-search');
+      var q = (qEl ? qEl.value : '').trim().toLowerCase();
+
+      memberRows.forEach(function (m) { m._w = memberWaitlistMatch(m); });
+      var inWl = memberRows.filter(function (m) { return m._w; }).length;
+      document.getElementById('jd-member-summary').innerHTML =
+        '<strong>' + memberRows.length + '</strong> member · <strong>' + inWl + '</strong> sudah di waitlist · <strong>' +
+        (memberRows.length - inWl) + '</strong> belum daftar ' +
+        '<span style="color:var(--text-3)">— terdeteksi otomatis (≥2x beli, bukan pola jastip). Keputusan mengundang tetap di kamu.</span>';
+
+      var list = memberRows.filter(function (m) {
+        if (memberFilter === 'waitlist' && !m._w) return false;
+        if (memberFilter === 'unreg'    &&  m._w) return false;
+        if (q) {
+          var hay = ((m.emails || []).join(' ') + ' ' + (m.phones || []).join(' ')).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      el.innerHTML = list.length
+        ? list.map(memberCardHtml).join('')
+        : '<div class="jd-empty">Tidak ada member yang cocok.</div>';
+
+      if (memberOpenKey) {
+        jdLoadMemberOrders(memberOpenKey);
+        var card = el.querySelector('[data-key="' + (window.CSS && CSS.escape ? CSS.escape(memberOpenKey) : memberOpenKey) + '"]');
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    function memberCardHtml(m) {
+      var email = (m.emails || [])[0] || '—';
+      var phone = (m.phones || [])[0] || '';
+      var w = m._w;
+      var wlTag = w
+        ? '<span class="badge badge-' + (w.effective_status || 'pending') + '">' + (STATUS_LABELS[w.effective_status] || w.effective_status) + '</span>'
+        : '<span class="badge badge-expired">Belum daftar</span>';
+      var open = (memberOpenKey === m.identity_key);
+      var keyAttr = esc(m.identity_key);
+      var keyJs   = String(m.identity_key).replace(/['\\]/g, '\\$&');
+      return '<div class="jd-member-card" data-key="' + keyAttr + '">' +
+        '<div class="jd-member-head" onclick="jdToggleMember(\'' + keyJs + '\')">' +
+          '<div>' +
+            '<div class="jd-member-email">' + esc(email) + '</div>' +
+            '<div class="jd-member-sub">' + (phone ? fmtPhone(phone) : '—') + ' · ' + m.jml_order + ' order · ' +
+              m.bulan_aktif + ' bulan · ' + m.produk_beda + ' produk berbeda · ' + esc(m.order_pertama || '') + ' → ' + esc(m.order_terakhir || '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' + wlTag +
+            (w ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + (w.email || '').replace(/['\\]/g, '\\$&') + '\')">Lihat di Waitlist</button>' : '') +
+            '<span class="jd-chevron">' + (open ? '▾' : '▸') + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="jd-member-orders" id="jd-mo-' + keyAttr + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +
+      '</div>';
+    }
+
+    function jdToggleMember(key) {
+      memberOpenKey = (memberOpenKey === key) ? null : key;
+      renderMembers();
+    }
+
+    async function jdLoadMemberOrders(key) {
+      var box = document.getElementById('jd-mo-' + key);
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = '<div class="jd-loading">Memuat riwayat...</div>';
+      try {
+        var r = await sbQuery('launch_loyal_orders?identity_key=eq.' + encodeURIComponent(key) + '&select=*&order=order_date.desc&limit=100');
+        var rows = r.data || [];
+        box.innerHTML = rows.length
+          ? rows.map(function (o) {
+              return '<div class="jd-member-order">' +
+                '<span class="jd-mo-date">' + esc(o.order_date || '—') + '</span>' +
+                '<span class="jd-mo-no">#' + esc(o.order_id) + '</span>' +
+                '<span>' + esc(o.produk || '—') + (o.total_qty > 1 ? ' <span style="color:var(--text-3)">×' + o.total_qty + '</span>' : '') + '</span>' +
+              '</div>';
+            }).join('')
+          : '<div class="jd-empty">Riwayat tidak ditemukan.</div>';
+      } catch (e) {
+        box.innerHTML = '<div class="jd-empty">Gagal memuat riwayat.</div>';
+      }
     }
 
     // ── ALOKASI ──────────────────────────────────────────────
