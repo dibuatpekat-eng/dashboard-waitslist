@@ -802,7 +802,7 @@
                 <option value="expired">Expired</option>
                 <option value="purchased">Sudah Beli</option>
               </select>
-              <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Hitung ulang dari data order terbaru">↻ Refresh data</button>
+              <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Hitung ulang data member & deteksi duplikat dari data terbaru">↻ Refresh data</button>
             </div>
           </div>
           <div style="padding:12px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)" id="jd-member-summary">—</div>
@@ -2544,15 +2544,23 @@
       switchTab('member');
     }
 
+    // Refresh dua-duanya: data member DAN deteksi duplikat. Keduanya materialized
+    // view, jadi entry waitlist baru tidak ketahuan sampai dihitung ulang.
     async function jdRefreshMembers() {
-      showToast('Menghitung ulang data member...');
+      showToast('Menghitung ulang data member & duplikat...');
       try {
         // sbQuery TIDAK throw saat non-2xx -> cek status supaya toast-nya jujur.
-        var r = await sbQuery('rpc/launch_refresh_loyal', { method: 'POST', body: '{}' });
-        if (r.status >= 200 && r.status < 300) showToast('Data member diperbarui');
-        else showToast('Gagal refresh (status ' + r.status + ')', true);
+        var r1 = await sbQuery('rpc/launch_refresh_loyal', { method: 'POST', body: '{}' });
+        var r2 = await sbQuery('rpc/launch_refresh_dups',  { method: 'POST', body: '{}' });
+        var gagal = [];
+        if (!(r1.status >= 200 && r1.status < 300)) gagal.push('member (' + r1.status + ')');
+        if (!(r2.status >= 200 && r2.status < 300)) gagal.push('duplikat (' + r2.status + ')');
+        if (gagal.length) showToast('Gagal refresh: ' + gagal.join(', '), true);
+        else showToast('Data member & duplikat diperbarui');
       } catch (e) { showToast('Gagal refresh: ' + e.message, true); }
       loadMembers();
+      // baris waitlist ikut berubah (chip Duplikat), jadi muat ulang juga
+      if (typeof loadWaitlist === 'function') loadWaitlist();
     }
 
     async function loadMembers() {

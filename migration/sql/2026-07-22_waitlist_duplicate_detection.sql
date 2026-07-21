@@ -11,9 +11,21 @@
 -- Objek yang dibuat:
 --   launch_dup_pairs   (matview) pasangan entry + alasan + jarak waktu
 --   launch_dup_lookup  (matview) ringkasan per entry, buat join cepat
---   launch_waitlist_view  + kolom dup_count, dup_claimed
+--   launch_waitlist_view  + kolom dup_count, dup_bobot, dup_claimed
 --   launch_refresh_dups() RPC untuk refresh manual
+--   launch_waitlist_lpa_trgm_idx  index trigram (WAJIB, lihat catatan performa)
+--
+-- CATATAN PERFORMA
+-- Cabang "nama mirip" itu self-join yang biayanya kuadratik. Kalau ditulis
+-- menjoin CTE, index trigram tidak bisa dipakai: 4,9 juta perbandingan, 6,8 detik
+-- pada 2.226 entry -- dan itu akan jadi ~4x lipat setiap waitlist berlipat ganda.
+-- Karena itu cabang tersebut menyentuh launch_waitlist langsung, dan ekspresinya
+-- ditulis panjang (bukan lewat CTE atau fungsi wrapper) supaya sama persis dengan
+-- ekspresi index. Hasilnya refresh 6.885ms -> 734ms. Jangan "dirapikan" jadi CTE.
 -- =====================================================================
+
+CREATE INDEX launch_waitlist_lpa_trgm_idx ON public.launch_waitlist
+USING gin ((regexp_replace(split_part(public.jd_normalize_email(email),'@',1),'[^a-z]','','g')) gin_trgm_ops);
 
 -- --- 1. Pasangan yang terindikasi satu orang ------------------------
 CREATE MATERIALIZED VIEW public.launch_dup_pairs AS
@@ -42,13 +54,23 @@ raw AS (
   FROM wk a JOIN wk z ON a.id < z.id
   WHERE length(a.lpa) >= 5 AND a.lpa = z.lpa
   UNION ALL
-  -- nama mirip; jauh lebih kuat kalau daftarnya berdekatan waktu
+  -- nama mirip; jauh lebih kuat kalau daftarnya berdekatan waktu.
+  -- Lewat tabel langsung supaya launch_waitlist_lpa_trgm_idx terpakai.
   SELECT a.id, z.id, 'nama mirip'::text,
          CASE WHEN abs(extract(epoch FROM a.registered_at - z.registered_at))/60 <= 60
               THEN 80 ELSE 55 END
-  FROM wk a JOIN wk z ON a.id < z.id
-  WHERE length(a.lpa) >= 5 AND length(z.lpa) >= 5 AND a.lpa <> z.lpa
-    AND a.lpa % z.lpa AND similarity(a.lpa, z.lpa) >= 0.62
+  FROM public.launch_waitlist a
+  JOIN public.launch_waitlist z
+    ON a.id < z.id
+   AND regexp_replace(split_part(public.jd_normalize_email(a.email),'@',1),'[^a-z]','','g')
+     % regexp_replace(split_part(public.jd_normalize_email(z.email),'@',1),'[^a-z]','','g')
+  WHERE length(regexp_replace(split_part(public.jd_normalize_email(a.email),'@',1),'[^a-z]','','g')) >= 5
+    AND length(regexp_replace(split_part(public.jd_normalize_email(z.email),'@',1),'[^a-z]','','g')) >= 5
+    AND regexp_replace(split_part(public.jd_normalize_email(a.email),'@',1),'[^a-z]','','g')
+     <> regexp_replace(split_part(public.jd_normalize_email(z.email),'@',1),'[^a-z]','','g')
+    AND similarity(
+          regexp_replace(split_part(public.jd_normalize_email(a.email),'@',1),'[^a-z]','','g'),
+          regexp_replace(split_part(public.jd_normalize_email(z.email),'@',1),'[^a-z]','','g')) >= 0.62
     AND abs(extract(epoch FROM a.registered_at - z.registered_at))/60 <= 1440
   UNION ALL
   -- nomor HP hanya beda digit terakhir
