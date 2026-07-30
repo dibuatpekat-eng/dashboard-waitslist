@@ -2775,19 +2775,20 @@
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
 
       // ── Agregasi per SKU (varian) lintas batch ──
-      // allocated DIJUMLAH lintas batch. invited_active/purchased/invited_expired
-      // TIDAK dijumlah: view nge-join token per product|color|size (bukan per
-      // batch), jadi tiap baris varian yang sama nilainya identik -> ambil sekali.
-      // (Model per-batch yang lama double-count token kalau 1 varian dialokasi
-      // di >1 batch -- makanya diganti board per-SKU.)
+      // SEMUA angka DIJUMLAH lintas batch. View nempelin tiap token ke SATU batch
+      // (batch yang aktif saat token dibuat -- lihat pg_get_viewdef: a2.created_at
+      // <= t.created_at). Jadi invited_active/purchased/invited_expired itu DIPECAH
+      // per-batch (partisi), bukan identik -> harus dijumlah, bukan ditimpa.
+      // (Dulu pakai '=' dengan asumsi keliru bahwa tiap baris varian identik, jadi
+      // token di batch baru ketimpa nilai batch lama -> sisa slot ga keliatan turun.)
       var perSku = {};
       result.data.forEach(function(r) {
         var k = r.product + '|' + r.color + '|' + r.size;
         if (!perSku[k]) perSku[k] = { allocated: 0, invited: 0, bought: 0, expiredBack: 0 };
         perSku[k].allocated  += (r.allocated || 0);
-        perSku[k].invited     = r.invited_active || 0;
-        perSku[k].bought      = r.purchased || 0;
-        perSku[k].expiredBack = r.invited_expired || 0;
+        perSku[k].invited    += (r.invited_active || 0);
+        perSku[k].bought     += (r.purchased || 0);
+        perSku[k].expiredBack += (r.invited_expired || 0);
       });
 
       var html = '';
