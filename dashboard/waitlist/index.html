@@ -680,7 +680,7 @@
                  ringkasan di atas — dropdown ini cuma sisa dimensi "tahap proses"
                  yang gak ada kartunya (Sudah Beli, Expired). -->
             <select id="jd-filter-status" onchange="jdApplyFilter(this.value)" title="Filter tahap / tanda">
-              <option value="">Semua Tahap</option>
+              <option value="">Semua Tahap &amp; Tanda</option>
               <optgroup label="Tahap">
                 <option value="stage:pending">Belum Diproses</option>
                 <option value="stage:invited">Undangan Terkirim</option>
@@ -692,15 +692,21 @@
                 <option value="mark:aware">Aware</option>
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
-              <optgroup label="Pelanggan (Customer Database)">
-                <option value="cust:member">Member (pernah beli)</option>
-                <option value="tier:1">Member bertier \u2014 tier apa pun</option>
-                <option value="tier:2">Member Maison ke atas</option>
-                <option value="tier:3">Member Prive</option>
-                <option value="cust:notier">Member belum bertier</option>
-                <option value="cust:baru">Belum pernah beli</option>
-                <option value="cust:ganda">Daftar lebih dari sekali (orang sama)</option>
-                <option value="cust:jastip">Bertanda jastip</option>
+            </select>
+            <select id="jd-filter-cust" onchange="jdApplyCustFilter(this.value)" title="Filter berdasarkan Customer Database — bisa digabung dengan filter Tahap/Tanda">
+              <option value="">Semua Pelanggan</option>
+              <optgroup label="Member (pernah beli)">
+                <option value="member">Semua member</option>
+                <option value="notier">Belum bertier</option>
+                <option value="tier1">Atelier</option>
+                <option value="tier2">Maison</option>
+                <option value="tier3">Prive</option>
+              </optgroup>
+              <optgroup label="Lainnya">
+                <option value="baru">Bukan member (belum pernah beli)</option>
+                <option value="beli">Sudah pernah dapat Rhea/Phi</option>
+                <option value="jastip">Bertanda jastip</option>
+                <option value="ganda">Daftar lebih dari sekali (orang sama)</option>
               </optgroup>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
@@ -720,7 +726,7 @@
               <option value="100">100 / hal</option>
               <option value="200">200 / hal</option>
             </select>
-            <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cocokkan ulang semua pendaftar ke Customer Database (jastip, tier, riwayat belanja). Otomatis tiap 15 menit \u2014 tombol ini untuk menyegarkan sekarang juga.">Segarkan Data Pelanggan</button>
+            <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cocokkan ulang semua pendaftar ke Customer Database (jastip, tier, riwayat belanja). Otomatis tiap 15 menit — tombol ini untuk menyegarkan sekarang juga.">Segarkan Data Pelanggan</button>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
           </div>
         </div>
@@ -831,12 +837,13 @@
               <input type="text" id="jd-member-search" placeholder="Cari email / no. HP..." oninput="renderMembers()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
               <select id="jd-member-tier" onchange="jdSetMemberTier(this.value)" title="Saring per keanggotaan / tingkat tier">
                 <option value="">Semua Pelanggan</option>
-                <option value="member">Member (pernah beli)</option>
-                <option value="tier1">Member bertier — tier apa pun</option>
-                <option value="tier2">Maison ke atas</option>
-                <option value="tier3">Prive</option>
+                <option value="member">Semua member</option>
                 <option value="notier">Member belum bertier</option>
-                <option value="belum">Belum pernah beli</option>
+                <option value="tier1">Atelier</option>
+                <option value="tier2">Maison</option>
+                <option value="tier3">Prive</option>
+                <option value="belum">Bukan member (belum pernah beli)</option>
+                <option value="jastip">Bertanda jastip</option>
               </select>
               <select id="jd-member-filter" onchange="jdSetMemberFilter(this.value)">
                 <option value="all">Semua Tahap</option>
@@ -994,7 +1001,8 @@
     var waitlistStageFilter = ''; // '' | pending | invited | purchased | expired
     var waitlistVariantFilter = ''; // '' | 'product|color|size' -- filter tabel per variasi (8 jenis)
     var loyalFilter = false;        // true = tampilkan hanya Member (punya tier)
-    var custFilter  = '';           // saringan Customer Database: tier ke atas / baru / ganda / jastip
+    var custFilter  = '';           // saringan Customer Database, terpisah dari Tahap/Tanda
+                                    // '' | member | notier | tier1..tier3 | baru | beli | jastip | ganda
     // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
     var MARK_ICON = {
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
@@ -1013,12 +1021,15 @@
       waitlistStageFilter = '';
       markFilter = '';
       loyalFilter = false;
-      custFilter = '';
       if (v.indexOf('stage:') === 0) waitlistStageFilter = v.slice(6);
       else if (v.indexOf('mark:') === 0) markFilter = v.slice(5);
       else if (v.indexOf('loyal:') === 0) loyalFilter = true;
-      else if (v.indexOf('tier:') === 0) custFilter = 'tier' + v.slice(5);
-      else if (v.indexOf('cust:') === 0) custFilter = v.slice(5);
+      loadWaitlist(1);
+    }
+
+    // Dropdown Pelanggan -- terpisah supaya bisa dipadukan dengan Tahap/Tanda.
+    function jdApplyCustFilter(v) {
+      custFilter = v || '';
       loadWaitlist(1);
     }
     // Filter per variasi (product|color|size). Independen dari filter Tahap/Tanda,
@@ -1320,6 +1331,8 @@
       loyalFilter = false;
       custFilter = '';
       statusSel.value = '';
+      var custSel = document.getElementById('jd-filter-cust');
+      if (custSel) custSel.value = '';
       if (which === 'clean')        { cardFlagFilter = 'clean'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending'; }
       else if (which === 'review')  { cardFlagFilter = 'review'; }
       else if (which === 'invited') { cardFlagFilter = 'eversent'; }
@@ -1342,6 +1355,8 @@
     function jdViewInWaitlist(email) {
       switchTab('waitlist');
       document.getElementById('jd-filter-status').value = '';
+      var custSel2 = document.getElementById('jd-filter-cust');
+      if (custSel2) custSel2.value = '';
       cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false; custFilter = '';
       var vSel = document.getElementById('jd-filter-variant'); if (vSel) vSel.value = '';
       document.getElementById('jd-search-input').value = email;
@@ -1686,15 +1701,17 @@
       if (loyalFilter) q += '&is_loyal=eq.true';
       // Saringan Customer Database. tierN = tier rank N ke ATAS (bukan persis N),
       // karena "Maison ke atas" adalah cara orang memikirkan tingkatan.
-      if (custFilter === 'tier1')      q += '&tier_rank=gte.1';
-      else if (custFilter === 'tier2') q += '&tier_rank=gte.2';
-      else if (custFilter === 'tier3') q += '&tier_rank=gte.3';
-      // Member = pernah beli; "belum pernah beli" adalah kebalikannya, BUKAN
-      // "tidak ada di Customer Database" -- 46 orang dikenal di sana tapi belum
-      // pernah bertransaksi, dan mereka termasuk yang belum pernah beli.
-      else if (custFilter === 'member') q += '&is_loyal=is.true';
-      else if (custFilter === 'notier') q += '&is_loyal=is.true&tier_rank=is.null';
+      var TANPA_JASTIP = '&cust_jastip_pasti=is.false';
+      if (custFilter === 'member')      q += '&is_loyal=is.true' + TANPA_JASTIP;
+      else if (custFilter === 'notier') q += '&is_loyal=is.true&tier_rank=is.null' + TANPA_JASTIP;
+      else if (custFilter === 'tier1')  q += '&tier_rank=eq.1' + TANPA_JASTIP;
+      else if (custFilter === 'tier2')  q += '&tier_rank=eq.2' + TANPA_JASTIP;
+      else if (custFilter === 'tier3')  q += '&tier_rank=eq.3' + TANPA_JASTIP;
+      // "Bukan member" = belum pernah beli apa pun. Ini BUKAN sama dengan
+      // "tidak ada di Customer Database": 46 orang dikenal di sana lewat
+      // reservasi/pre-order tanpa pernah bertransaksi.
       else if (custFilter === 'baru')   q += '&is_loyal=is.false';
+      else if (custFilter === 'beli')   q += '&already_purchased=is.true';
       else if (custFilter === 'ganda')  q += '&orang_jml_baris=gt.1';
       else if (custFilter === 'jastip') q += '&or=(cust_jastip_pasti.is.true,cust_jastip_tanda.is.true)';
       if (search) {
@@ -1829,7 +1846,10 @@
         if (row.cust_nilai_belanja) tierTip.push('total ' + fmtRp(row.cust_nilai_belanja));
         if (row.cust_channel && row.cust_channel.length) tierTip.push('kanal: ' + row.cust_channel.join(', '));
         if (row.cust_belanja_terakhir) tierTip.push('terakhir ' + fmtDate(row.cust_belanja_terakhir));
-        var loyalChip = row.tier_nama
+        // Jastip tidak pernah dilabeli member/tier. Mereka memang pernah beli,
+        // tapi label "Member Atelier" di sebelah "Jastip" adalah dua pesan yang
+        // saling melawan, dan yang menang di mata operator biasanya yang ramah.
+        var loyalChip = row.cust_jastip_pasti ? '' : row.tier_nama
           ? '<span class="jd-loyal-chip jd-tier-' + String(row.tier_nama).toLowerCase() + '" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 member, tier ' + esc(row.tier_nama) + ' \u00b7 ' + esc(tierTip.join(' \u00b7 ')) + '. Klik untuk riwayat belanjanya.">' + esc(row.tier_nama) + '</span>'
           : (row.is_loyal
               ? '<span class="jd-loyal-chip jd-tier-none" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 member (pernah beli) \u00b7 ' + esc(tierTip.join(' \u00b7 ')) + '. Belum mencapai tier. Klik untuk riwayat belanjanya.">Member</span>'
@@ -1852,7 +1872,13 @@
         // sudah ditandai aman (keterangan diganti), dan saat barisnya sudah
         // diproses (keterangan tidak digambar). Member/tier tidak menggantikan
         // fakta ini -- orang bertier pun bisa sudah kebagian satu.
-        var beliChip = row.already_purchased
+        // Keterangan baris sudah menuliskan "Pernah beli: ..." pada kasus paling
+        // umum. Chip ini hanya untuk kasus di mana keterangan itu TIDAK muncul:
+        // barisnya juga jastip (keterangan dipakai jastip), sudah ditandai aman,
+        // atau sudah diproses. Tanpa pembatas ini, hal yang sama tertulis tiga
+        // kali di satu baris.
+        var keteranganSudahSebutBeli = isActionable && needsReview && !row.cust_jastip_pasti;
+        var beliChip = (row.already_purchased && !keteranganSudahSebutBeli)
           ? '<span class="jd-beli-chip" title="Sudah pernah dapat produk waitlist: '
             + esc(row.purchased_product_name || '\u2014')
             + (row.beli_produk_waitlist_jml > 1 ? ' (' + row.beli_produk_waitlist_jml + ' order)' : '')
@@ -2751,8 +2777,8 @@
       var qEl = document.getElementById('jd-member-search');
       var q = (qEl ? qEl.value : '').trim().toLowerCase();
 
-      var member  = memberRows.filter(function (m) { return m.jml_belanja > 0; }).length;
-      var bertier = memberRows.filter(function (m) { return m.tier_rank; }).length;
+      var member  = memberRows.filter(function (m) { return m.jml_belanja > 0 && !m.cust_jastip_pasti; }).length;
+      var bertier = memberRows.filter(function (m) { return m.tier_rank && !m.cust_jastip_pasti; }).length;
       var belum   = memberRows.filter(function (m) { return m.tahap_tertinggi === 0; }).length;
       var ganda   = memberRows.filter(function (m) { return m.jml_pendaftaran > 1; }).length;
       document.getElementById('jd-member-summary').innerHTML =
@@ -2764,12 +2790,14 @@
 
       var list = memberRows.filter(function (m) {
         if (memberFilter !== 'all' && TAHAP_LABEL[m.tahap_tertinggi] !== memberFilter) return false;
-        if (memberTierMin === 'member' && !(m.jml_belanja > 0)) return false;
-        if (memberTierMin === 'belum'  &&   m.jml_belanja > 0)  return false;
-        if (memberTierMin === 'notier' && !(m.jml_belanja > 0 && !m.tier_rank)) return false;
-        if (memberTierMin === 'tier1'  && !(m.tier_rank >= 1)) return false;
-        if (memberTierMin === 'tier2'  && !(m.tier_rank >= 2)) return false;
-        if (memberTierMin === 'tier3'  && !(m.tier_rank >= 3)) return false;
+        var mMember = (m.jml_belanja > 0) && !m.cust_jastip_pasti;
+        if (memberTierMin === 'member' && !mMember) return false;
+        if (memberTierMin === 'notier' && !(mMember && !m.tier_rank)) return false;
+        if (memberTierMin === 'tier1'  && !(mMember && m.tier_rank === 1)) return false;
+        if (memberTierMin === 'tier2'  && !(mMember && m.tier_rank === 2)) return false;
+        if (memberTierMin === 'tier3'  && !(mMember && m.tier_rank === 3)) return false;
+        if (memberTierMin === 'belum'  &&   m.jml_belanja > 0) return false;
+        if (memberTierMin === 'jastip' && !(m.cust_jastip_pasti || m.cust_jastip_tanda)) return false;
         if (q) {
           var hay = ((m.semua_email || []).join(' ') + ' ' + (m.nama || '')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
@@ -2794,11 +2822,13 @@
       var tahap  = TAHAP_LABEL[m.tahap_tertinggi] || 'pending';
       var wlTag  = '<span class="badge badge-' + tahap + '">' + (STATUS_LABELS[tahap] || tahap) + '</span>';
 
-      var tierTag = m.tier_nama
-        ? '<span class="jd-loyal-chip jd-tier-' + String(m.tier_nama).toLowerCase() + '">' + esc(m.tier_nama) + '</span>'
-        : (m.jml_belanja > 0
-            ? '<span class="jd-loyal-chip jd-tier-none" title="Pernah beli, belum mencapai tier.">Member</span>'
-            : '<span class="jd-risk-chip" title="Dikenal di Customer Database tapi belum pernah bertransaksi.">Belum beli</span>');
+      var tierTag = m.cust_jastip_pasti
+        ? ''
+        : (m.tier_nama
+            ? '<span class="jd-loyal-chip jd-tier-' + String(m.tier_nama).toLowerCase() + '">' + esc(m.tier_nama) + '</span>'
+            : (m.jml_belanja > 0
+                ? '<span class="jd-loyal-chip jd-tier-none" title="Pernah beli, belum mencapai tier.">Member</span>'
+                : '<span class="jd-risk-chip" title="Dikenal di Customer Database tapi belum pernah bertransaksi.">Belum beli</span>'));
       // Jastip ditampilkan apa adanya. Menyembunyikannya di tab "Member" akan
       // membuat operator mengira daftar ini sudah bersih.
       var riskTag = m.cust_jastip_pasti
