@@ -309,6 +309,12 @@
     /* Jastip yang terlanjur dapat slot -- tegas, karena inilah yang paling perlu
        tertangkap mata saat menelusuri ulang. */
     .jd-risk-chip.jd-risk-pasti { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
+    /* "Pernah beli produk waitlist" -- biru, bahasa yang sudah dipakai badge
+       badge-bought, supaya tidak tertukar dengan merah (jastip) atau teal (tier). */
+    .jd-beli-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
+      color: var(--bought); background: var(--bought-bg); border: 1px solid var(--bought-border);
+      border-radius: 3px; }
     /* Pendaftaran ganda menurut identitas yang sudah tertaut -- lebih tegas dari
        chip kemiripan, karena dasarnya bukan tebakan. */
     .jd-dup-chip.jd-dup-orang { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
@@ -687,10 +693,12 @@
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
               <optgroup label="Pelanggan (Customer Database)">
-                <option value="tier:1">Member \u2014 tier apa pun</option>
+                <option value="cust:member">Member (pernah beli)</option>
+                <option value="tier:1">Member bertier \u2014 tier apa pun</option>
                 <option value="tier:2">Member Maison ke atas</option>
                 <option value="tier:3">Member Prive</option>
-                <option value="cust:baru">Belum pernah belanja</option>
+                <option value="cust:notier">Member belum bertier</option>
+                <option value="cust:baru">Belum pernah beli</option>
                 <option value="cust:ganda">Daftar lebih dari sekali (orang sama)</option>
                 <option value="cust:jastip">Bertanda jastip</option>
               </optgroup>
@@ -821,11 +829,14 @@
             <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— pendaftar waitlist yang dikenali di Customer Database: tier, riwayat belanja semua kanal, dan status jastip</span></span>
             <div class="jd-controls">
               <input type="text" id="jd-member-search" placeholder="Cari email / no. HP..." oninput="renderMembers()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
-              <select id="jd-member-tier" onchange="jdSetMemberTier(this.value)" title="Saring per tingkat keanggotaan">
-                <option value="0">Semua Pelanggan</option>
-                <option value="1">Member — tier apa pun</option>
-                <option value="2">Maison ke atas</option>
-                <option value="3">Prive</option>
+              <select id="jd-member-tier" onchange="jdSetMemberTier(this.value)" title="Saring per keanggotaan / tingkat tier">
+                <option value="">Semua Pelanggan</option>
+                <option value="member">Member (pernah beli)</option>
+                <option value="tier1">Member bertier — tier apa pun</option>
+                <option value="tier2">Maison ke atas</option>
+                <option value="tier3">Prive</option>
+                <option value="notier">Member belum bertier</option>
+                <option value="belum">Belum pernah beli</option>
               </select>
               <select id="jd-member-filter" onchange="jdSetMemberFilter(this.value)">
                 <option value="all">Semua Tahap</option>
@@ -1678,7 +1689,12 @@
       if (custFilter === 'tier1')      q += '&tier_rank=gte.1';
       else if (custFilter === 'tier2') q += '&tier_rank=gte.2';
       else if (custFilter === 'tier3') q += '&tier_rank=gte.3';
-      else if (custFilter === 'baru')   q += '&sudah_pelanggan=is.false';
+      // Member = pernah beli; "belum pernah beli" adalah kebalikannya, BUKAN
+      // "tidak ada di Customer Database" -- 46 orang dikenal di sana tapi belum
+      // pernah bertransaksi, dan mereka termasuk yang belum pernah beli.
+      else if (custFilter === 'member') q += '&is_loyal=is.true';
+      else if (custFilter === 'notier') q += '&is_loyal=is.true&tier_rank=is.null';
+      else if (custFilter === 'baru')   q += '&is_loyal=is.false';
       else if (custFilter === 'ganda')  q += '&orang_jml_baris=gt.1';
       else if (custFilter === 'jastip') q += '&or=(cust_jastip_pasti.is.true,cust_jastip_tanda.is.true)';
       if (search) {
@@ -1814,9 +1830,9 @@
         if (row.cust_channel && row.cust_channel.length) tierTip.push('kanal: ' + row.cust_channel.join(', '));
         if (row.cust_belanja_terakhir) tierTip.push('terakhir ' + fmtDate(row.cust_belanja_terakhir));
         var loyalChip = row.tier_nama
-          ? '<span class="jd-loyal-chip jd-tier-' + String(row.tier_nama).toLowerCase() + '" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 ' + esc(tierTip.join(' \u00b7 ')) + '. Klik untuk riwayat belanjanya.">' + esc(row.tier_nama) + '</span>'
-          : (row.sudah_pelanggan && row.cust_jml_belanja > 0
-              ? '<span class="jd-loyal-chip jd-tier-none" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 ' + esc(tierTip.join(' \u00b7 ')) + '. Belum masuk tier. Klik untuk riwayat belanjanya.">' + row.cust_jml_belanja + '\u00d7 beli</span>'
+          ? '<span class="jd-loyal-chip jd-tier-' + String(row.tier_nama).toLowerCase() + '" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 member, tier ' + esc(row.tier_nama) + ' \u00b7 ' + esc(tierTip.join(' \u00b7 ')) + '. Klik untuk riwayat belanjanya.">' + esc(row.tier_nama) + '</span>'
+          : (row.is_loyal
+              ? '<span class="jd-loyal-chip jd-tier-none" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 member (pernah beli) \u00b7 ' + esc(tierTip.join(' \u00b7 ')) + '. Belum mencapai tier. Klik untuk riwayat belanjanya.">Member</span>'
               : '');
 
         // Label jastip yang TIDAK menahan (keputusan founder 26 Agu 2026):
@@ -1830,6 +1846,20 @@
         // tanda operator sengaja disembunyikan di sana. Akibatnya jastip yang
         // terlanjur dapat slot tampil polos sebagai "Sudah Beli" -- persis kasus
         // yang paling perlu bisa ditelusuri kembali. Chip ini mengembalikannya.
+        // "Pernah beli" HARUS selalu terlihat, apa pun status lainnya. Sebelumnya ia
+        // hanya muncul di keterangan baris, sehingga hilang persis ketika paling
+        // dibutuhkan: saat orangnya juga jastip (keterangan dipakai jastip), saat
+        // sudah ditandai aman (keterangan diganti), dan saat barisnya sudah
+        // diproses (keterangan tidak digambar). Member/tier tidak menggantikan
+        // fakta ini -- orang bertier pun bisa sudah kebagian satu.
+        var beliChip = row.already_purchased
+          ? '<span class="jd-beli-chip" title="Sudah pernah dapat produk waitlist: '
+            + esc(row.purchased_product_name || '\u2014')
+            + (row.beli_produk_waitlist_jml > 1 ? ' (' + row.beli_produk_waitlist_jml + ' order)' : '')
+            + (row.purchased_order_date ? ' \u00b7 ' + esc(fmtDate(row.purchased_order_date)) : '')
+            + '. Di luar undangan dari waitlist ini.">Pernah beli</span>'
+          : '';
+
         if (!isActionable && row.cust_jastip_pasti) {
           riskChip = '<span class="jd-risk-chip jd-risk-pasti" title="' + esc(row.cust_nama || '')
             + ' \u2014 jastip yang sudah dipastikan di Customer Database, tapi undangan/pembelian ini sudah terlanjur terjadi.">Jastip</span>' + riskChip;
@@ -1854,7 +1884,7 @@
               : 'Terindikasi orang yang sama dengan ' + row.dup_count + ' entry lain. Klik untuk lihat.') +
             '">Duplikat' + (row.dup_count > 1 ? ' ' + row.dup_count : '') + '</span>'
           : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + beliChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -2661,7 +2691,7 @@
     //
     // Tab ini hanya menyajikan BUKTI; keputusan mengundang tetap di operator.
     var memberFilter    = 'all';   // all | pending | invited | purchased
-    var memberTierMin   = 0;       // 0 = semua, 1..3 = tier rank minimal
+    var memberTierMin   = '';      // '' | member | tier1..tier3 | notier | belum
     var memberRows      = [];      // hasil launch_member
     var memberOpenKey   = null;    // orang_id kartu yang sedang dibuka
     var memberFocusKey  = null;    // diisi saat chip tier di tab Waitlist diklik
@@ -2669,7 +2699,7 @@
     var TAHAP_LABEL = { 0: 'pending', 1: 'expired', 2: 'invited', 3: 'purchased' };
 
     function jdSetMemberFilter(v) { memberFilter = v; renderMembers(); }
-    function jdSetMemberTier(v)   { memberTierMin = Number(v) || 0; renderMembers(); }
+    function jdSetMemberTier(v)   { memberTierMin = v || ''; renderMembers(); }
 
     // Dipanggil dari chip tier di tab Waitlist -> pindah tab & buka kartunya.
     function jdOpenMember(orangId) {
@@ -2704,9 +2734,9 @@
         memberRows = a.data || [];
         if (memberFocusKey) {
           memberOpenKey = memberFocusKey;
-          memberFilter = 'all'; memberTierMin = 0;
+          memberFilter = 'all'; memberTierMin = '';
           var fs = document.getElementById('jd-member-filter'); if (fs) fs.value = 'all';
-          var ts = document.getElementById('jd-member-tier');   if (ts) ts.value = '0';
+          var ts = document.getElementById('jd-member-tier');   if (ts) ts.value = '';
           memberFocusKey = null;
         }
         renderMembers();
@@ -2721,18 +2751,25 @@
       var qEl = document.getElementById('jd-member-search');
       var q = (qEl ? qEl.value : '').trim().toLowerCase();
 
-      var member  = memberRows.filter(function (m) { return m.tier_rank; }).length;
+      var member  = memberRows.filter(function (m) { return m.jml_belanja > 0; }).length;
+      var bertier = memberRows.filter(function (m) { return m.tier_rank; }).length;
       var belum   = memberRows.filter(function (m) { return m.tahap_tertinggi === 0; }).length;
       var ganda   = memberRows.filter(function (m) { return m.jml_pendaftaran > 1; }).length;
       document.getElementById('jd-member-summary').innerHTML =
-        '<strong>' + memberRows.length + '</strong> pendaftar dikenali di Customer Database · ' +
-        '<strong>' + member + '</strong> punya tier · <strong>' + belum + '</strong> belum diproses' +
+        '<strong>' + member + '</strong> member (pernah beli), ' +
+        '<strong>' + bertier + '</strong> di antaranya sudah bertier · ' +
+        '<strong>' + belum + '</strong> belum diproses' +
         (ganda ? ' · <strong>' + ganda + '</strong> mendaftar lebih dari sekali' : '') +
         ' <span style="color:var(--text-3)">\u2014 dicocokkan lewat nomor & email yang tertaut di Customer Database. Keputusan mengundang tetap di kamu.</span>';
 
       var list = memberRows.filter(function (m) {
         if (memberFilter !== 'all' && TAHAP_LABEL[m.tahap_tertinggi] !== memberFilter) return false;
-        if (memberTierMin && !(m.tier_rank >= memberTierMin)) return false;
+        if (memberTierMin === 'member' && !(m.jml_belanja > 0)) return false;
+        if (memberTierMin === 'belum'  &&   m.jml_belanja > 0)  return false;
+        if (memberTierMin === 'notier' && !(m.jml_belanja > 0 && !m.tier_rank)) return false;
+        if (memberTierMin === 'tier1'  && !(m.tier_rank >= 1)) return false;
+        if (memberTierMin === 'tier2'  && !(m.tier_rank >= 2)) return false;
+        if (memberTierMin === 'tier3'  && !(m.tier_rank >= 3)) return false;
         if (q) {
           var hay = ((m.semua_email || []).join(' ') + ' ' + (m.nama || '')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
@@ -2759,7 +2796,9 @@
 
       var tierTag = m.tier_nama
         ? '<span class="jd-loyal-chip jd-tier-' + String(m.tier_nama).toLowerCase() + '">' + esc(m.tier_nama) + '</span>'
-        : '';
+        : (m.jml_belanja > 0
+            ? '<span class="jd-loyal-chip jd-tier-none" title="Pernah beli, belum mencapai tier.">Member</span>'
+            : '<span class="jd-risk-chip" title="Dikenal di Customer Database tapi belum pernah bertransaksi.">Belum beli</span>');
       // Jastip ditampilkan apa adanya. Menyembunyikannya di tab "Member" akan
       // membuat operator mengira daftar ini sudah bersih.
       var riskTag = m.cust_jastip_pasti
