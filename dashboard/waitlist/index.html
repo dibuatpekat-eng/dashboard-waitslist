@@ -292,6 +292,24 @@
     /* Kembarannya sudah dapat slot -> lebih tegas, ini yang paling perlu dilihat operator. */
     .jd-dup-chip.jd-dup-hot { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
     .jd-dup-chip.jd-dup-hot:hover { background: #F6D8D4; border-color: #CE8079; }
+    /* Tier -- satu keluarga warna (teal) dengan pekat yang naik seiring tingkat,
+       supaya urutannya kebaca sekilas tanpa harus mengingat nama tier. */
+    .jd-loyal-chip.jd-tier-none   { color: #5B6B69; background: #F0F4F3; border-color: #C9D6D4; }
+    .jd-loyal-chip.jd-tier-atelier{ color: #0F6B63; background: #E6F5F3; border-color: #9AD3CC; }
+    .jd-loyal-chip.jd-tier-maison { color: #0A544E; background: #CFEAE6; border-color: #6FBFB5; }
+    .jd-loyal-chip.jd-tier-prive  { color: #F4FBFA; background: #0F6B63; border-color: #0A544E; }
+    .jd-loyal-chip.jd-tier-prive:hover { background: #0A544E; }
+    /* Label jastip yang TIDAK menahan -- sengaja kalem (abu, tanpa isian mencolok)
+       supaya tidak tertukar dengan badge merah "Perlu Ditinjau" yang benar-benar
+       memblokir. Ini keterangan, bukan peringatan. */
+    .jd-risk-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
+      color: #6B5F52; background: #F5F1EC; border: 1px solid #D9CFC2; border-radius: 3px; }
+    .jd-risk-chip.jd-risk-jastip_official { color: #6B4E1F; background: #F7EFDD; border-color: #DCC79A; }
+    /* Pendaftaran ganda menurut identitas yang sudah tertaut -- lebih tegas dari
+       chip kemiripan, karena dasarnya bukan tebakan. */
+    .jd-dup-chip.jd-dup-orang { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
+    .jd-dup-chip.jd-dup-orang:hover { background: #F6D8D4; border-color: #CE8079; }
     .jd-dup-row { display: flex; gap: 10px; align-items: baseline; padding: 7px 0;
       border-bottom: 1px dashed var(--border); font-size: 12.5px; }
     .jd-dup-why { font-size: 10.5px; color: var(--text-3); letter-spacing: .03em; }
@@ -665,8 +683,13 @@
                 <option value="mark:aware">Aware</option>
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
-              <optgroup label="Pelanggan">
-                <option value="loyal:1">Member (pernah beli berulang)</option>
+              <optgroup label="Pelanggan (Customer Database)">
+                <option value="tier:1">Member \u2014 tier apa pun</option>
+                <option value="tier:2">Member Maison ke atas</option>
+                <option value="tier:3">Member Prive</option>
+                <option value="cust:baru">Belum pernah belanja</option>
+                <option value="cust:ganda">Daftar lebih dari sekali (orang sama)</option>
+                <option value="cust:jastip">Bertanda jastip</option>
               </optgroup>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
@@ -686,7 +709,7 @@
               <option value="100">100 / hal</option>
               <option value="200">200 / hal</option>
             </select>
-            <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cek ulang semua pendaftar yang belum diundang terhadap data jastip terkini. Jalankan sebelum kirim batch undangan.">Rescan Jastip</button>
+            <button class="jd-btn jd-btn-outline" id="jd-rescan-btn" onclick="jdRescanFlags()" title="Cocokkan ulang semua pendaftar ke Customer Database (jastip, tier, riwayat belanja). Otomatis tiap 15 menit \u2014 tombol ini untuk menyegarkan sekarang juga.">Segarkan Data Pelanggan</button>
             <button class="jd-btn jd-btn-outline" onclick="exportCSV()">Export CSV</button>
           </div>
         </div>
@@ -792,9 +815,15 @@
       <div class="jd-tab-panel" id="jd-tab-panel-member">
         <div class="jd-section">
           <div class="jd-section-header">
-            <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— entry waitlist yang cocok dengan database pembelian (≥2x beli, bukan jastip)</span></span>
+            <span class="jd-section-title">Member <span style="font-weight:400;font-size:11px;color:var(--text-3)">— pendaftar waitlist yang dikenali di Customer Database: tier, riwayat belanja semua kanal, dan status jastip</span></span>
             <div class="jd-controls">
               <input type="text" id="jd-member-search" placeholder="Cari email / no. HP..." oninput="renderMembers()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
+              <select id="jd-member-tier" onchange="jdSetMemberTier(this.value)" title="Saring per tingkat keanggotaan">
+                <option value="0">Semua Pelanggan</option>
+                <option value="1">Member — tier apa pun</option>
+                <option value="2">Maison ke atas</option>
+                <option value="3">Prive</option>
+              </select>
               <select id="jd-member-filter" onchange="jdSetMemberFilter(this.value)">
                 <option value="all">Semua Tahap</option>
                 <option value="pending">Belum Diproses</option>
@@ -802,7 +831,7 @@
                 <option value="expired">Expired</option>
                 <option value="purchased">Sudah Beli</option>
               </select>
-              <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Hitung ulang data member & deteksi duplikat dari data terbaru">↻ Refresh data</button>
+              <button class="jd-btn jd-btn-outline" onclick="jdRefreshMembers()" title="Cocokkan ulang ke Customer Database + hitung ulang deteksi duplikat">↻ Segarkan</button>
             </div>
           </div>
           <div style="padding:12px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)" id="jd-member-summary">—</div>
@@ -950,7 +979,8 @@
     var markFilter = '';          // '' | 'shortlisted' | 'aware' | 'none'
     var waitlistStageFilter = ''; // '' | pending | invited | purchased | expired
     var waitlistVariantFilter = ''; // '' | 'product|color|size' -- filter tabel per variasi (8 jenis)
-    var loyalFilter = false;        // true = tampilkan hanya Member (pelanggan berulang)
+    var loyalFilter = false;        // true = tampilkan hanya Member (punya tier)
+    var custFilter  = '';           // saringan Customer Database: tier ke atas / baru / ganda / jastip
     // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
     var MARK_ICON = {
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
@@ -969,9 +999,12 @@
       waitlistStageFilter = '';
       markFilter = '';
       loyalFilter = false;
+      custFilter = '';
       if (v.indexOf('stage:') === 0) waitlistStageFilter = v.slice(6);
       else if (v.indexOf('mark:') === 0) markFilter = v.slice(5);
       else if (v.indexOf('loyal:') === 0) loyalFilter = true;
+      else if (v.indexOf('tier:') === 0) custFilter = 'tier' + v.slice(5);
+      else if (v.indexOf('cust:') === 0) custFilter = v.slice(5);
       loadWaitlist(1);
     }
     // Filter per variasi (product|color|size). Independen dari filter Tahap/Tanda,
@@ -1271,6 +1304,7 @@
       waitlistStageFilter = '';
       markFilter = '';
       loyalFilter = false;
+      custFilter = '';
       statusSel.value = '';
       if (which === 'clean')        { cardFlagFilter = 'clean'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending'; }
       else if (which === 'review')  { cardFlagFilter = 'review'; }
@@ -1294,7 +1328,7 @@
     function jdViewInWaitlist(email) {
       switchTab('waitlist');
       document.getElementById('jd-filter-status').value = '';
-      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false;
+      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false; custFilter = '';
       var vSel = document.getElementById('jd-filter-variant'); if (vSel) vSel.value = '';
       document.getElementById('jd-search-input').value = email;
       loadWaitlist(1);
@@ -1447,6 +1481,16 @@
         + ' ' + d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
     }
 
+    // Rupiah ringkas -- kolom status sempit, angka penuh ("Rp 8.400.000")
+    // mendorong chip lain keluar baris. Dibulatkan ke bawah supaya tidak pernah
+    // terlihat lebih besar dari nilai sebenarnya.
+    function fmtRp(n) {
+      n = Number(n) || 0;
+      if (n >= 1000000) return 'Rp ' + (Math.floor(n / 100000) / 10).toString().replace('.', ',') + 'jt';
+      if (n >= 1000)    return 'Rp ' + Math.floor(n / 1000) + 'rb';
+      return 'Rp ' + n;
+    }
+
     function fmtPhone(p) {
       if (!p) return '—';
       return p.startsWith('62') ? '0' + p.slice(2) : p;
@@ -1570,7 +1614,10 @@
       var orig = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = 'Rescan...'; }
       try {
-        var res = await fetch(SB_URL + '/rest/v1/rpc/launch_rescan_waitlist_flags', {
+        // Sekarang menyegarkan sambungan ke Customer Database, bukan lagi
+        // memindai jastip_orders (beku sejak 2 Agustus 2026). Cron juga
+        // menjalankannya tiap 15 menit; tombol ini untuk yang tidak mau menunggu.
+        var res = await fetch(SB_URL + '/rest/v1/rpc/launch_refresh_customer_link', {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: '{}'
@@ -1578,9 +1625,9 @@
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('status ' + res.status);
         var out = await res.json();
-        var msg = 'Rescan selesai — ' + (out.newly_flagged || 0) + ' entry baru keflag jastip'
-                + (out.cleared ? ', ' + out.cleared + ' flag dibersihkan' : '')
-                + ' (dari ' + (out.changed || 0) + ' perubahan).';
+        var msg = 'Tersambung ulang \u2014 ' + (out.baris_tersambung || 0) + ' pendaftar cocok ke '
+                + (out.orang_unik || 0) + ' orang di Customer Database, '
+                + (out.jastip_dipastikan || 0) + ' di antaranya jastip.';
         showToast(msg, false);
         loadWaitlist(currentPage);
       } catch (e) {
@@ -1623,6 +1670,14 @@
         q += '&product=eq.' + vf[0] + '&color=eq.' + vf[1] + '&size=eq.' + vf[2];
       }
       if (loyalFilter) q += '&is_loyal=eq.true';
+      // Saringan Customer Database. tierN = tier rank N ke ATAS (bukan persis N),
+      // karena "Maison ke atas" adalah cara orang memikirkan tingkatan.
+      if (custFilter === 'tier1')      q += '&tier_rank=gte.1';
+      else if (custFilter === 'tier2') q += '&tier_rank=gte.2';
+      else if (custFilter === 'tier3') q += '&tier_rank=gte.3';
+      else if (custFilter === 'baru')   q += '&sudah_pelanggan=is.false';
+      else if (custFilter === 'ganda')  q += '&orang_jml_baris=gt.1';
+      else if (custFilter === 'jastip') q += '&or=(cust_jastip_pasti.is.true,cust_jastip_tanda.is.true)';
       if (search) {
         // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
         // (XSS-escape) di seluruh scope loadWaitlist, bikin render baris error.
@@ -1672,7 +1727,7 @@
         // ditandai aman operator. Begitu operator klik "Tandai Aman", sinyal
         // mentahnya tetap ada tapi needs_review jadi false -> orangnya eligible.
         var needsReview = row.needs_review === true;
-        var wasSignal   = (row.is_flagged || row.already_purchased);
+        var wasSignal   = (row.cust_jastip_pasti || row.already_purchased);
         var eligible = (!needsReview && isActionable) ? '1' : '0';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
 
@@ -1688,14 +1743,19 @@
         var statusBadge, statusCaption = '';
         if (isActionable) {
           if (needsReview) {
-            if (row.is_flagged) {
+            if (row.cust_jastip_pasti) {
               rowAccentClass = 'jd-row-jastip';
               statusBadge = '<span class="badge badge-flag">Perlu Ditinjau</span>';
-              statusCaption = '<span class="jd-flag-detail">Terindikasi jastip</span>';
+              // Ini BUKAN tebakan mesin: status jastip di Customer Database cuma
+              // bisa ditetapkan lewat keputusan manusia. Sebut siapa orangnya
+              // supaya operator tahu ini sudah pernah diputuskan, bukan sinyal mentah.
+              statusCaption = '<span class="jd-flag-detail">Jastip \u2014 sudah dipastikan di Customer Database</span>';
             } else {
               rowAccentClass = 'jd-row-bought';
               statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
-              statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '—') + (row.purchased_order_id ? ' · Order #' + esc(row.purchased_order_id) : '') + '</span>';
+              statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '\u2014')
+                + (row.beli_produk_waitlist_jml > 1 ? ' (' + row.beli_produk_waitlist_jml + '\u00d7)' : '')
+                + (row.purchased_order_date ? ' \u00b7 ' + fmtDate(row.purchased_order_date) : '') + '</span>';
             }
           } else if (row.effective_status === 'expired') {
             // Pernah diundang tapi expired (ga checkout). Tetap bisa dikirim ulang,
@@ -1720,7 +1780,7 @@
 
         // Checkbox yang disabled tanpa alasan bikin operator bingung "kok gak
         // bisa dicentang". Kasih tau kenapa lewat title (tooltip).
-        var disabledReason = needsReview ? (row.is_flagged ? 'Perlu ditinjau dulu (jastip)' : 'Perlu ditinjau dulu (pernah beli produk lain)')
+        var disabledReason = needsReview ? (row.cust_jastip_pasti ? 'Perlu ditinjau dulu (jastip \u2014 dipastikan di Customer Database)' : 'Perlu ditinjau dulu (pernah beli produk waitlist)')
           : !isActionable ? 'Sudah diproses (' + (STATUS_LABELS[row.effective_status] || row.effective_status) + ')'
           : '';
 
@@ -1741,19 +1801,49 @@
         var markHtml = isActionable ? '<span class="jd-mark-row" data-mid="' + row.id + '">' + jdMarkBtns(row.id, mk) + '</span>' : '';
         // Chip Member = deteksi OTOMATIS (pelanggan berulang), tampil di status apa pun.
         // Sengaja bukan tombol -- beda dari tanda manual Shortlist/Aware.
-        var loyalChip = row.is_loyal
-          ? '<span class="jd-loyal-chip" onclick="event.stopPropagation(); jdOpenMember(\'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="Pelanggan berulang — ' + (row.loyal_orders || 0) + ' order · ' + (row.loyal_bulan || 0) + ' bulan aktif · ' + (row.loyal_produk || 0) + ' produk berbeda. Klik untuk lihat riwayat belanjanya.">Member</span>'
+        // Chip tier -- dari Customer Database, bukan tebakan dari riwayat order.
+        // Nama tier-nya yang ditulis (Atelier/Maison/Prive), bukan "Member"
+        // generik: tingkatannya yang menentukan keputusan slot, dan privilege
+        // Maison ke atas memang menjanjikan early access.
+        var tierTip = [];
+        if (row.cust_jml_belanja)   tierTip.push(row.cust_jml_belanja + '\u00d7 belanja');
+        if (row.cust_nilai_belanja) tierTip.push('total ' + fmtRp(row.cust_nilai_belanja));
+        if (row.cust_channel && row.cust_channel.length) tierTip.push('kanal: ' + row.cust_channel.join(', '));
+        if (row.cust_belanja_terakhir) tierTip.push('terakhir ' + fmtDate(row.cust_belanja_terakhir));
+        var loyalChip = row.tier_nama
+          ? '<span class="jd-loyal-chip jd-tier-' + String(row.tier_nama).toLowerCase() + '" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 ' + esc(tierTip.join(' \u00b7 ')) + '. Klik untuk riwayat belanjanya.">' + esc(row.tier_nama) + '</span>'
+          : (row.sudah_pelanggan && row.cust_jml_belanja > 0
+              ? '<span class="jd-loyal-chip jd-tier-none" onclick="event.stopPropagation(); jdOpenMember(\'' + row.orang_id + '\')" title="' + esc(row.cust_nama || '') + ' \u2014 ' + esc(tierTip.join(' \u00b7 ')) + '. Belum masuk tier. Klik untuk riwayat belanjanya.">' + row.cust_jml_belanja + '\u00d7 beli</span>'
+              : '');
+
+        // Label jastip yang TIDAK menahan (keputusan founder 26 Agu 2026):
+        // mitra resmi & dugaan mesin boleh diundang, operator yang memutuskan.
+        // Ditulis apa adanya supaya tidak tertukar dengan "Perlu Ditinjau".
+        var RISK_LABEL = { jastip_official: 'Jastip resmi', jastip_suspected: 'Dugaan jastip', under_review: 'Perlu dilihat' };
+        var riskChip = (row.cust_jastip_tanda && RISK_LABEL[row.cust_risk])
+          ? '<span class="jd-risk-chip jd-risk-' + row.cust_risk + '" title="' + esc(row.cust_nama || '') + ' \u2014 status di Customer Database: ' + esc(RISK_LABEL[row.cust_risk]) + '. Tidak ditahan; kamu yang memutuskan.">' + RISK_LABEL[row.cust_risk] + '</span>'
           : '';
         // Chip Duplikat = indikasi orang yang sama daftar ulang pakai email/HP lain
         // (nyiasatin blokir 1 email + 1 HP). Deteksi otomatis, keputusan tetap di operator.
-        var dupChip = (row.dup_count > 0)
+        // Pendaftaran ganda oleh ORANG yang sama, menurut Customer Database.
+        // Ini lebih kuat daripada tebakan kemiripan (dup_count) karena bersandar
+        // pada identitas yang sudah tertaut: kasus nyata di data ini seorang
+        // mitra jastip resmi mendaftar lewat 4 email + 4 nomor berbeda, yang
+        // tanpa penautan identitas terlihat seperti 4 orang berbeda.
+        var samaChip = (row.orang_jml_baris > 1)
+          ? '<span class="jd-dup-chip jd-dup-orang" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' + esc(row.cust_nama || 'Orang ini') + ' mendaftar ' + row.orang_jml_baris + '\u00d7 dengan kontak berbeda. Klik untuk lihat semuanya.">' + row.orang_jml_baris + '\u00d7 daftar</span>'
+          : '';
+        // Chip kemiripan lama cuma dipakai kalau orangnya BELUM ketemu di
+        // Customer Database -- kalau sudah ketemu, samaChip lebih dapat dipercaya
+        // dan menampilkan keduanya cuma menggandakan peringatan yang sama.
+        var dupChip = (!row.sudah_pelanggan && row.dup_count > 0)
           ? '<span class="jd-dup-chip' + (row.dup_claimed ? ' jd-dup-hot' : '') + '" onclick="event.stopPropagation(); jdOpenDup(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' +
             (row.dup_claimed
               ? 'Kembarannya SUDAH dapat undangan / sudah beli. Klik untuk lihat.'
               : 'Terindikasi orang yang sama dengan ' + row.dup_count + ' entry lain. Klik untuk lihat.') +
             '">Duplikat' + (row.dup_count > 1 ? ' ' + row.dup_count : '') + '</span>'
           : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -2509,57 +2599,86 @@
       }
     }
 
-    // ── MEMBER (pelanggan berulang) ──────────────────────────
-    // Deteksi OTOMATIS dari riwayat order (view launch_loyal_customers).
-    // Keputusan mengundang tetap di operator -- tab ini cuma menyajikan bukti.
-    var memberFilter     = 'all';   // all | waitlist | unreg
-    var memberRows       = [];      // hasil launch_loyal_customers (loyal=true)
-    var memberWaitlist   = [];      // entry waitlist yang is_loyal (buat pencocokan)
-    var memberOpenKey    = null;    // identity_key kartu yang sedang dibuka
-    var memberFocusEmail = null;    // diisi saat chip "Member" di tab Waitlist diklik
+    // Semua pendaftaran milik SATU orang, menurut identitas yang sudah tertaut
+    // di Customer Database. Dipakai untuk memutuskan sendiri berapa slot yang
+    // pantas -- bukan memblokir otomatis: mendaftar dua kali belum tentu curang
+    // (ganti nomor, ganti email), dan menolaknya diam-diam akan salah menghukum.
+    async function jdOpenSamePerson(orangId, nama) {
+      openModal('jd-modal-dup');
+      var head = document.getElementById('jd-dup-head');
+      var list = document.getElementById('jd-dup-list');
+      head.innerHTML = '<strong>' + esc(nama || 'Orang ini') + '</strong>';
+      list.innerHTML = '<div class="jd-loading">Memuat...</div>';
+      try {
+        var r = await sbQuery('launch_waitlist_view?orang_id=eq.' + encodeURIComponent(orangId) +
+          '&select=id,email,phone,product,color,size,registered_at,effective_status,cust_risk,tier_nama' +
+          '&order=registered_at.asc&limit=50');
+        var rows = r.data || [];
+        if (!rows.length) { list.innerHTML = '<div class="jd-empty">Tidak ada data.</div>'; return; }
+        var sudah = rows.filter(function (d) {
+          return d.effective_status === 'invited' || d.effective_status === 'purchased';
+        }).length;
+        head.innerHTML = '<strong>' + esc(nama || 'Orang ini') + '</strong> mendaftar ' + rows.length +
+          '\u00d7 dengan kontak berbeda' +
+          (rows[0].tier_nama ? ' \u00b7 ' + esc(rows[0].tier_nama) : '') + ':' +
+          (sudah > 0
+            ? '<div style="margin-top:8px;padding:8px 10px;background:#FBE9E7;border:1px solid #E0A6A0;color:#8C1D18;font-size:12px">'
+              + 'Orang ini sudah dapat ' + sudah + ' slot. Mengalokasikan lagi berarti dia dapat lebih dari satu.</div>'
+            : '');
+        list.innerHTML = rows.map(function (d) {
+          return '<div class="jd-dup-row">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="word-break:break-all">' + esc(d.email || '\u2014') + '</div>' +
+              '<div class="jd-dup-why">' + esc(fmtPhone(d.phone)) + ' \u00b7 ' +
+                esc([d.product, d.color, d.size].filter(Boolean).join(' ')) +
+                ' \u00b7 daftar ' + fmtDate(d.registered_at) + '</div>' +
+            '</div>' +
+            '<span class="badge badge-' + (d.effective_status || 'pending') + '">' +
+              (STATUS_LABELS[d.effective_status] || d.effective_status || '\u2014') + '</span>' +
+          '</div>';
+        }).join('');
+      } catch (e) {
+        list.innerHTML = '<div class="jd-empty">Gagal memuat data.</div>';
+      }
+    }
 
-    // Cerminan jd_normalize_email / jd_normalize_phone di sisi klien.
-    function jdNormEmailJS(e) {
-      e = (e || '').trim().toLowerCase();
-      if (!e || e.indexOf('@') < 0) return e || '';
-      var lp = e.split('@')[0], dp = e.split('@')[1];
-      lp = lp.split('+')[0];
-      if (dp === 'gmail.com' || dp === 'googlemail.com') { lp = lp.replace(/\./g, ''); dp = 'gmail.com'; }
-      return lp + '@' + dp;
-    }
-    function jdNormPhoneJS(p) {
-      var d = (p || '').replace(/[^0-9]/g, '');
-      if (!d) return '';
-      if (d.charAt(0) === '0') return '62' + d.slice(1);
-      if (d.slice(0, 2) === '62') return d;
-      if (d.charAt(0) === '8') return '62' + d;
-      return d;
-    }
+    // ── MEMBER (pelanggan dari Customer Database) ────────────
+    // Sumber: view launch_member -- ringkasan per ORANG (bukan per baris
+    // waitlist, bukan per kartu pelanggan), lengkap dengan tier, nilai belanja,
+    // dan status jastip. Menggantikan launch_loyal_customers yang dibangun dari
+    // jastip_orders + web_purchases dan beku sejak 2 Agustus 2026.
+    //
+    // Tab ini hanya menyajikan BUKTI; keputusan mengundang tetap di operator.
+    var memberFilter    = 'all';   // all | pending | invited | purchased
+    var memberTierMin   = 0;       // 0 = semua, 1..3 = tier rank minimal
+    var memberRows      = [];      // hasil launch_member
+    var memberOpenKey   = null;    // orang_id kartu yang sedang dibuka
+    var memberFocusKey  = null;    // diisi saat chip tier di tab Waitlist diklik
+
+    var TAHAP_LABEL = { 0: 'pending', 1: 'expired', 2: 'invited', 3: 'purchased' };
 
     function jdSetMemberFilter(v) { memberFilter = v; renderMembers(); }
+    function jdSetMemberTier(v)   { memberTierMin = Number(v) || 0; renderMembers(); }
 
-    // Dipanggil dari chip "Member" di tab Waitlist -> pindah tab & buka kartunya.
-    function jdOpenMember(email) {
-      memberFocusEmail = jdNormEmailJS(email);
+    // Dipanggil dari chip tier di tab Waitlist -> pindah tab & buka kartunya.
+    function jdOpenMember(orangId) {
+      memberFocusKey = orangId || null;
       switchTab('member');
     }
 
-    // Refresh dua-duanya: data member DAN deteksi duplikat. Keduanya materialized
-    // view, jadi entry waitlist baru tidak ketahuan sampai dihitung ulang.
+    // Menyegarkan sambungan ke Customer Database + deteksi duplikat lama.
     async function jdRefreshMembers() {
-      showToast('Menghitung ulang data member & duplikat...');
+      showToast('Menyegarkan data pelanggan...');
       try {
-        // sbQuery TIDAK throw saat non-2xx -> cek status supaya toast-nya jujur.
-        var r1 = await sbQuery('rpc/launch_refresh_loyal', { method: 'POST', body: '{}' });
-        var r2 = await sbQuery('rpc/launch_refresh_dups',  { method: 'POST', body: '{}' });
+        var r1 = await sbQuery('rpc/launch_refresh_customer_link', { method: 'POST', body: '{}' });
+        var r2 = await sbQuery('rpc/launch_refresh_dups',          { method: 'POST', body: '{}' });
         var gagal = [];
-        if (!(r1.status >= 200 && r1.status < 300)) gagal.push('member (' + r1.status + ')');
+        if (!(r1.status >= 200 && r1.status < 300)) gagal.push('pelanggan (' + r1.status + ')');
         if (!(r2.status >= 200 && r2.status < 300)) gagal.push('duplikat (' + r2.status + ')');
-        if (gagal.length) showToast('Gagal refresh: ' + gagal.join(', '), true);
-        else showToast('Data member & duplikat diperbarui');
-      } catch (e) { showToast('Gagal refresh: ' + e.message, true); }
+        if (gagal.length) showToast('Gagal menyegarkan: ' + gagal.join(', '), true);
+        else showToast('Data pelanggan diperbarui');
+      } catch (e) { showToast('Gagal menyegarkan: ' + e.message, true); }
       loadMembers();
-      // baris waitlist ikut berubah (chip Duplikat), jadi muat ulang juga
       if (typeof loadWaitlist === 'function') loadWaitlist();
     }
 
@@ -2568,36 +2687,21 @@
       if (!el) return;
       el.innerHTML = '<div class="jd-loading">Memuat...</div>';
       try {
-        var a = await sbQuery('launch_loyal_customers?loyal=eq.true&select=*&order=skor.desc&limit=2000');
-        var b = await sbQuery('launch_waitlist_view?is_loyal=eq.true&select=id,email,phone,effective_status&limit=2000');
-        memberRows     = a.data || [];
-        memberWaitlist = b.data || [];
-        if (memberFocusEmail) {
-          for (var i = 0; i < memberRows.length; i++) {
-            if ((memberRows[i].emails || []).map(jdNormEmailJS).indexOf(memberFocusEmail) !== -1) {
-              memberOpenKey = memberRows[i].identity_key;
-              memberFilter = 'all';
-              var fs = document.getElementById('jd-member-filter'); if (fs) fs.value = 'all';
-              break;
-            }
-          }
-          memberFocusEmail = null;
+        // Diurutkan dari yang paling menentukan keputusan slot: tier tertinggi,
+        // lalu nilai belanja. Jastip tidak disembunyikan -- justru perlu terlihat.
+        var a = await sbQuery('launch_member?select=*&order=tier_rank.desc.nullslast,nilai_belanja.desc&limit=2000');
+        memberRows = a.data || [];
+        if (memberFocusKey) {
+          memberOpenKey = memberFocusKey;
+          memberFilter = 'all'; memberTierMin = 0;
+          var fs = document.getElementById('jd-member-filter'); if (fs) fs.value = 'all';
+          var ts = document.getElementById('jd-member-tier');   if (ts) ts.value = '0';
+          memberFocusKey = null;
         }
         renderMembers();
       } catch (e) {
         el.innerHTML = '<div class="jd-empty">Gagal memuat: ' + esc(e.message) + '</div>';
       }
-    }
-
-    function memberWaitlistMatch(m) {
-      var emails = (m.emails || []).map(jdNormEmailJS);
-      var phones = (m.phones || []).map(jdNormPhoneJS);
-      for (var i = 0; i < memberWaitlist.length; i++) {
-        var w = memberWaitlist[i];
-        if (emails.indexOf(jdNormEmailJS(w.email)) !== -1) return w;
-        if (phones.indexOf(jdNormPhoneJS(w.phone)) !== -1) return w;
-      }
-      return null;
     }
 
     function renderMembers() {
@@ -2606,19 +2710,20 @@
       var qEl = document.getElementById('jd-member-search');
       var q = (qEl ? qEl.value : '').trim().toLowerCase();
 
-      // Tab ini HANYA menampilkan entry waitlist yang cocok dengan database
-      // pembelian. Yang belum daftar waitlist tidak ditampilkan di sini.
-      memberRows.forEach(function (m) { m._w = memberWaitlistMatch(m); });
-      var matched = memberRows.filter(function (m) { return m._w; });
-      var belumProses = matched.filter(function (m) { return m._w.effective_status === 'pending'; }).length;
+      var member  = memberRows.filter(function (m) { return m.tier_rank; }).length;
+      var belum   = memberRows.filter(function (m) { return m.tahap_tertinggi === 0; }).length;
+      var ganda   = memberRows.filter(function (m) { return m.jml_pendaftaran > 1; }).length;
       document.getElementById('jd-member-summary').innerHTML =
-        '<strong>' + matched.length + '</strong> member terdaftar di waitlist · <strong>' + belumProses + '</strong> belum diproses ' +
-        '<span style="color:var(--text-3)">— dicocokkan otomatis ke database pembelian (≥2x beli, bukan pola jastip). Keputusan mengundang tetap di kamu.</span>';
+        '<strong>' + memberRows.length + '</strong> pendaftar dikenali di Customer Database · ' +
+        '<strong>' + member + '</strong> punya tier · <strong>' + belum + '</strong> belum diproses' +
+        (ganda ? ' · <strong>' + ganda + '</strong> mendaftar lebih dari sekali' : '') +
+        ' <span style="color:var(--text-3)">\u2014 dicocokkan lewat nomor & email yang tertaut di Customer Database. Keputusan mengundang tetap di kamu.</span>';
 
-      var list = matched.filter(function (m) {
-        if (memberFilter !== 'all' && m._w.effective_status !== memberFilter) return false;
+      var list = memberRows.filter(function (m) {
+        if (memberFilter !== 'all' && TAHAP_LABEL[m.tahap_tertinggi] !== memberFilter) return false;
+        if (memberTierMin && !(m.tier_rank >= memberTierMin)) return false;
         if (q) {
-          var hay = ((m.emails || []).join(' ') + ' ' + (m.phones || []).join(' ')).toLowerCase();
+          var hay = ((m.semua_email || []).join(' ') + ' ' + (m.nama || '')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
         }
         return true;
@@ -2626,7 +2731,7 @@
 
       el.innerHTML = list.length
         ? list.map(memberCardHtml).join('')
-        : '<div class="jd-empty">Tidak ada member yang cocok.</div>';
+        : '<div class="jd-empty">Tidak ada yang cocok.</div>';
 
       if (memberOpenKey) {
         jdLoadMemberOrders(memberOpenKey);
@@ -2636,45 +2741,51 @@
     }
 
     function memberCardHtml(m) {
-      var w = m._w;
-      var allE = (m.emails || []).slice();
-      var allP = (m.phones || []).slice();
-      // Judul card pakai identitas yang dipakai mendaftar waitlist, bukan urutan array.
-      if (w) {
-        var wE = jdNormEmailJS(w.email), wP = jdNormPhoneJS(w.phone);
-        var iE = allE.indexOf(wE); if (iE > 0) allE.unshift(allE.splice(iE, 1)[0]);
-        var iP = allP.indexOf(wP); if (iP > 0) allP.unshift(allP.splice(iP, 1)[0]);
-      }
-      var email = allE[0] || '—';
-      var phone = allP[0] || '';
-      var wlTag = w
-        ? '<span class="badge badge-' + (w.effective_status || 'pending') + '">' + (STATUS_LABELS[w.effective_status] || w.effective_status) + '</span>'
+      var emails = m.semua_email || [];
+      var judul  = m.nama || emails[0] || '\u2014';
+      var tahap  = TAHAP_LABEL[m.tahap_tertinggi] || 'pending';
+      var wlTag  = '<span class="badge badge-' + tahap + '">' + (STATUS_LABELS[tahap] || tahap) + '</span>';
+
+      var tierTag = m.tier_nama
+        ? '<span class="jd-loyal-chip jd-tier-' + String(m.tier_nama).toLowerCase() + '">' + esc(m.tier_nama) + '</span>'
         : '';
-      // Cluster bisa berisi >1 email / >1 HP (orang yang sama pakai akun berbeda).
-      // Tampilkan sisanya supaya operator tahu ini hasil penggabungan.
-      var aliasE = allE.slice(1);
-      var aliasP = allP.slice(1);
+      // Jastip ditampilkan apa adanya. Menyembunyikannya di tab "Member" akan
+      // membuat operator mengira daftar ini sudah bersih.
+      var riskTag = m.cust_jastip_pasti
+        ? '<span class="jd-risk-chip" style="color:#8C1D18;background:#FBE9E7;border-color:#E0A6A0">Jastip</span>'
+        : (m.cust_jastip_tanda ? '<span class="jd-risk-chip">' + esc(m.cust_risk || '') + '</span>' : '');
+      var gandaTag = (m.jml_pendaftaran > 1)
+        ? '<span class="jd-dup-chip jd-dup-orang" title="Mendaftar ' + m.jml_pendaftaran + '\u00d7 dengan kontak berbeda.">' + m.jml_pendaftaran + '\u00d7 daftar</span>'
+        : '';
+
+      var sub = [];
+      if (m.jml_belanja)      sub.push(m.jml_belanja + '\u00d7 belanja');
+      if (m.nilai_belanja)    sub.push('total ' + fmtRp(m.nilai_belanja));
+      if (m.channel && m.channel.length) sub.push(m.channel.join(', '));
+      if (m.belanja_terakhir) sub.push('terakhir ' + fmtDate(m.belanja_terakhir));
+      if (m.beli_produk_waitlist) sub.push(m.beli_produk_waitlist + '\u00d7 produk waitlist');
+
       var aliasHtml = '';
-      if (aliasE.length || aliasP.length) {
+      if (emails.length > 1) {
         aliasHtml = '<div class="jd-member-alias"><span class="jd-alias-label">JUGA PAKAI:</span>' +
-          aliasE.map(function (x) { return '<span class="jd-alias-tag">' + esc(x) + '</span>'; }).join('') +
-          aliasP.map(function (x) { return '<span class="jd-alias-tag">' + esc(fmtPhone(x)) + '</span>'; }).join('') +
+          emails.slice(1).map(function (x) { return '<span class="jd-alias-tag">' + esc(x) + '</span>'; }).join('') +
           '</div>';
       }
-      var open = (memberOpenKey === m.identity_key);
-      var keyAttr = esc(m.identity_key);
-      var keyJs   = String(m.identity_key).replace(/['\\]/g, '\\$&');
+
+      var open    = (memberOpenKey === m.orang_id);
+      var keyAttr = esc(m.orang_id);
+      var keyJs   = String(m.orang_id).replace(/['\\]/g, '\\$&');
+      var mailJs  = String(emails[0] || '').replace(/['\\]/g, '\\$&');
       return '<div class="jd-member-card" data-key="' + keyAttr + '">' +
         '<div class="jd-member-head" onclick="jdToggleMember(\'' + keyJs + '\')">' +
           '<div>' +
-            '<div class="jd-member-email">' + esc(email) + '</div>' +
-            '<div class="jd-member-sub">' + (phone ? fmtPhone(phone) : '—') + ' · ' + m.jml_order + ' order · ' +
-              m.bulan_aktif + ' bulan · ' + m.produk_beda + ' produk berbeda · ' + esc(m.order_pertama || '') + ' → ' + esc(m.order_terakhir || '') +
-            '</div>' + aliasHtml +
+            '<div class="jd-member-email">' + esc(judul) + ' ' + tierTag + ' ' + riskTag + ' ' + gandaTag + '</div>' +
+            '<div class="jd-member-sub">' + esc(emails[0] || '\u2014') + (sub.length ? ' \u00b7 ' + esc(sub.join(' \u00b7 ')) : '') + '</div>' +
+            aliasHtml +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">' + wlTag +
-            (w ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + (w.email || '').replace(/['\\]/g, '\\$&') + '\')">Lihat di Waitlist</button>' : '') +
-            '<span class="jd-chevron">' + (open ? '▾' : '▸') + '</span>' +
+            (mailJs ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); jdViewInWaitlist(\'' + mailJs + '\')">Lihat di Waitlist</button>' : '') +
+            '<span class="jd-chevron">' + (open ? '\u25be' : '\u25b8') + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="jd-member-orders" id="jd-mo-' + keyAttr + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +
@@ -2692,14 +2803,18 @@
       box.style.display = 'block';
       box.innerHTML = '<div class="jd-loading">Memuat riwayat...</div>';
       try {
-        var r = await sbQuery('launch_loyal_orders?identity_key=eq.' + encodeURIComponent(key) + '&select=*&order=order_date.desc&limit=100');
+        var r = await sbQuery('launch_customer_orders?orang_id=eq.' + encodeURIComponent(key) +
+                              '&select=*&order=purchased_at.desc&limit=100');
         var rows = r.data || [];
         box.innerHTML = rows.length
           ? rows.map(function (o) {
-              return '<div class="jd-member-order">' +
-                '<span class="jd-mo-date">' + esc(o.order_date || '—') + '</span>' +
-                '<span class="jd-mo-no">#' + esc(o.order_id) + '</span>' +
-                '<span>' + esc(o.produk || '—') + (o.total_qty > 1 ? ' <span style="color:var(--text-3)">×' + o.total_qty + '</span>' : '') + '</span>' +
+              // Order batal tetap ditampilkan tapi diredupkan: menghapusnya
+              // membuat riwayat terlihat lebih pendek dari kenyataan.
+              var batal = (o.status === 'cancelled');
+              return '<div class="jd-member-order"' + (batal ? ' style="opacity:.5"' : '') + '>' +
+                '<span class="jd-mo-date">' + esc(fmtDate(o.purchased_at)) + '</span>' +
+                '<span class="jd-mo-no">' + esc(o.channel || '') + (o.order_no ? ' #' + esc(o.order_no) : '') + '</span>' +
+                '<span>' + esc(o.produk || '\u2014') + (batal ? ' <span style="color:var(--text-3)">(batal)</span>' : '') + '</span>' +
               '</div>';
             }).join('')
           : '<div class="jd-empty">Riwayat tidak ditemukan.</div>';
@@ -2707,6 +2822,7 @@
         box.innerHTML = '<div class="jd-empty">Gagal memuat riwayat.</div>';
       }
     }
+
 
     // ── ALOKASI ──────────────────────────────────────────────
     var allocFormOpen = false;
@@ -2960,7 +3076,11 @@
 
       function csvField(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
       var MK = { shortlisted: 'Shortlist', aware: 'Aware' };
-      var header = ['email','no_hp','produk','warna','ukuran','status','tanda','pernah_beli','flag_jastip','tanggal_daftar'];
+      // Kolom pelanggan ikut diekspor: keputusan alokasi sering dikerjakan di
+      // spreadsheet, dan tanpa tier/jastip di sana orang akan memutuskan tanpa
+      // sinyal yang justru paling menentukan.
+      var header = ['email','no_hp','produk','warna','ukuran','status','tanda','pernah_beli',
+                    'jastip','tier','jml_belanja','nilai_belanja','jml_pendaftaran','tanggal_daftar'];
       var rows = all.map(function(r) {
         return [
           r.email, r.phone,
@@ -2970,7 +3090,11 @@
           STATUS[r.effective_status] || r.effective_status || '',
           MK[r.mark] || '',
           r.already_purchased ? ('Ya' + (r.purchased_product_name ? ' (' + r.purchased_product_name + ')' : '')) : '',
-          r.is_flagged ? 'Ya' : '',
+          r.cust_jastip_pasti ? 'Ya' : (r.cust_risk || ''),
+          r.tier_nama || '',
+          r.cust_jml_belanja || 0,
+          r.cust_nilai_belanja || 0,
+          r.orang_jml_baris || 1,
           r.registered_at || ''
         ].map(csvField).join(',');
       });
