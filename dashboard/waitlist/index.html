@@ -609,6 +609,19 @@
           <div class="jd-stat-value" id="jd-stat-invited">—</div>
           <div style="font-size:10px;color:var(--text-3);margin-top:4px" id="jd-stat-conversion"></div>
         </div>
+        <div class="jd-stat" onclick="filterByStat('member')" title="Pendaftar yang pernah beli (Customer Database)">
+          <div class="jd-stat-label">Member</div>
+          <div class="jd-stat-value" id="jd-stat-member">—</div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:4px" id="jd-stat-member-tier"></div>
+        </div>
+        <div class="jd-stat" onclick="filterByStat('jastip')" title="Bertanda jastip di Customer Database">
+          <div class="jd-stat-label">Jastip</div>
+          <div class="jd-stat-value flagged" id="jd-stat-jastip">—</div>
+        </div>
+        <div class="jd-stat" onclick="filterByStat('ganda')" title="Baris dari orang yang mendaftar lebih dari sekali">
+          <div class="jd-stat-label">Daftar Ganda</div>
+          <div class="jd-stat-value" id="jd-stat-ganda">—</div>
+        </div>
       </div>
 
       <!-- DEMAND PER VARIAN -->
@@ -1211,6 +1224,10 @@
       if (which === 'clean')        { cardFlagFilter = 'clean'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending'; }
       else if (which === 'review')  { cardFlagFilter = 'review'; }
       else if (which === 'invited') { cardFlagFilter = 'eversent'; }
+      else if (which === 'member' || which === 'jastip' || which === 'ganda') {
+        custFilter = which;
+        if (custSel) custSel.value = which;
+      }
       // 'total' -> semua filter dikosongkan (sudah di atas)
       loadWaitlist(1);
       var section = document.getElementById('jd-tab-panel-waitlist');
@@ -1245,11 +1262,12 @@
       btn.disabled = true;
       btn.textContent = 'Refreshing...';
       try {
-        await Promise.all([
-          loadWaitlist(currentPage),
-          loadTokens(),
-          loadAllocations()
-        ]);
+        var tugas = [loadWaitlist(currentPage), loadTokens(), loadAllocations(), loadStats()];
+        // Tab Member ikut disegarkan kalau sedang dibuka -- sebelumnya tombol
+        // Refresh diam-diam melewatkannya, jadi angkanya bisa tertinggal.
+        var mp = document.getElementById('jd-tab-panel-member');
+        if (mp && mp.classList.contains('active')) tugas.push(loadMembers());
+        await Promise.all(tugas);
         showToast('Data refreshed.');
       } catch (e) {
         showToast('Failed to refresh data.', true);
@@ -1468,7 +1486,11 @@
         // mencakup siapapun yang PERNAH dikirimi token, apapun status
         // dia SEKARANG (masih invited, sudah purchased, atau sudah expired).
         sbQuery('launch_waitlist_view?select=id&effective_status=in.(invited,purchased,expired)'),
-        sbQuery('launch_waitlist_view?select=id&effective_status=eq.purchased')
+        sbQuery('launch_waitlist_view?select=id&effective_status=eq.purchased'),
+        sbQuery('launch_waitlist_view?select=id&is_loyal=is.true&cust_jastip_pasti=is.false'),
+        sbQuery('launch_waitlist_view?select=id&tier_rank=not.is.null&cust_jastip_pasti=is.false'),
+        sbQuery('launch_waitlist_view?select=id&cust_jastip_any=is.true'),
+        sbQuery('launch_waitlist_view?select=id&orang_jml_baris=gt.1')
       ]);
       document.getElementById('jd-stat-total').textContent   = r[0].count != null ? r[0].count : '—';
       document.getElementById('jd-stat-clean').textContent   = r[1].count != null ? r[1].count : '—';
@@ -1478,6 +1500,13 @@
       var purchased = r[4].count || 0;
       document.getElementById('jd-stat-conversion').textContent =
         everSent > 0 ? purchased + '/' + everSent + ' checkout' : '';
+
+      var setv = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = (v == null ? '—' : v); };
+      setv('jd-stat-member', r[5].count);
+      setv('jd-stat-jastip', r[7].count);
+      setv('jd-stat-ganda',  r[8].count);
+      var tierEl = document.getElementById('jd-stat-member-tier');
+      if (tierEl) tierEl.textContent = (r[6].count != null ? r[6].count + ' bertier' : '');
     }
 
     // ── SELECTION ────────────────────────────────────────────
@@ -1488,7 +1517,7 @@
       var bar  = document.getElementById('jd-action-bar');
       if (keys.length > 0) {
         bar.style.display = 'flex';
-        document.getElementById('jd-action-count').textContent = keys.length + ' dipilih';
+        document.getElementById('jd-action-count').textContent = keys.length + ' dipilih (halaman ini)';
       } else {
         bar.style.display = 'none';
       }
@@ -1498,12 +1527,19 @@
       if (checked) { selectedRows[id] = rowData; }
       else { delete selectedRows[id]; }
       updateActionBar();
-      // Update select-all state
-      var checkboxes = document.querySelectorAll('.jd-row-check');
-      var allChecked = Array.from(checkboxes).every(function(c) { return c.checked; });
-      document.getElementById('jd-check-all').checked = allChecked && checkboxes.length > 0;
+      // Hanya baris ELIGIBLE yang dihitung. Versi lama ikut menghitung checkbox
+      // yang disabled, jadi kotak "pilih semua" tidak pernah tercentang penuh di
+      // halaman yang punya baris perlu-ditinjau -- terlihat seperti gagal.
+      var elig = Array.from(document.querySelectorAll('.jd-row-check'))
+                      .filter(function (c) { return c.dataset.eligible === '1'; });
+      document.getElementById('jd-check-all').checked =
+        elig.length > 0 && elig.every(function (c) { return c.checked; });
     }
 
+    // CAKUPAN: hanya baris yang sedang tampil di HALAMAN INI. Seleksi juga
+    // dihapus setiap kali halaman berpindah (loadWaitlist memanggil
+    // clearSelection). Tanpa dikatakan, operator wajar mengira "pilih semua"
+    // berarti seluruh hasil filter -- lalu mengira sisanya sudah terkirim.
     function toggleSelectAll(el) {
       var checkboxes = document.querySelectorAll('.jd-row-check');
       checkboxes.forEach(function(c) {
@@ -1519,6 +1555,12 @@
         }
       });
       updateActionBar();
+      if (el.checked) {
+        var n = Object.keys(selectedRows).length;
+        var sisa = totalRows - n;
+        showToast(n + ' baris eligible di halaman ini dipilih'
+          + (sisa > 0 ? ' — ' + sisa + ' baris lain di halaman berikutnya belum ikut.' : '.'));
+      }
     }
 
     function clearSelection() {
@@ -1868,6 +1910,7 @@
         });
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('status ' + res.status);
+        jdCatatAksi('tandai_aman', id, email, null, { alasan_flag: reason });
         showToast('Ditandai aman — sekarang Eligible.');
         loadWaitlist(currentPage);
       } catch (e) {
@@ -2070,8 +2113,50 @@
         }
       } catch (e) { /* alokasi opsional -- kalau gagal fetch, jangan blokir generate */ }
 
+      // ── Slot dobel: dihitung per ORANG, bukan per baris ──────────────────
+      // Peringatan alokasi di atas menghitung baris. Satu orang bisa memegang
+      // beberapa baris (mendaftar ulang dengan email/HP berbeda), jadi "20 token"
+      // bisa berarti 17 orang -- dan tiga di antaranya dapat dua slot tanpa ada
+      // yang menyadarinya. Inilah cara jastip mengakali batas satu-orang-satu-slot.
+      var perOrang = {}, tanpaOrang = 0;
+      rows.forEach(function (r) {
+        if (r.orang_id) (perOrang[r.orang_id] = perOrang[r.orang_id] || []).push(r);
+        else tanpaOrang++;
+      });
+      var dobel = Object.keys(perOrang).filter(function (k) { return perOrang[k].length > 1; });
+      var dobelHtml = '';
+      if (dobel.length) {
+        var rinci = dobel.map(function (k) {
+          var g = perOrang[k];
+          return '<strong>' + esc(g[0].cust_nama || 'Orang yang sama') + '</strong>: '
+               + g.length + ' baris (' + g.map(function (x) { return esc(x.email || '—'); }).join(', ') + ')';
+        }).join('<br>');
+        dobelHtml = '<div style="margin-top:12px;padding:10px 12px;background:#FBE9E7;border:1px solid #E0A6A0;border-radius:8px;font-size:12.5px;color:#8C1D18">'
+          + '⚠️ <strong>' + dobel.length + ' orang akan dapat lebih dari satu slot:</strong><br>' + rinci
+          + '<br><span style="color:#A85A54">Batalkan dan centang satu saja kalau ini tidak disengaja.</span></div>';
+      }
+      // Sudah pernah dapat/memakai slot lewat pendaftaran lain
+      var pernahLain = rows.filter(function (r) { return r.orang_jml_baris > 1 && (!perOrang[r.orang_id] || perOrang[r.orang_id].length === 1); });
+      var pernahHtml = pernahLain.length
+        ? '<div style="margin-top:10px;padding:9px 12px;background:#FCF1E3;border:1px solid #E4C48C;border-radius:8px;font-size:12px;color:#7A4A0C">'
+          + pernahLain.length + ' orang di daftar ini juga punya pendaftaran lain di waitlist. Cek chip "×daftar" kalau ragu.</div>'
+        : '';
+
+      // Rincian per varian -- "20 token" tidak memberi tahu 20 token untuk apa.
+      var pM = { rhea: 'Rhea', phi: 'Phi' }, cM = { breen: 'Breen', auburn: 'Auburn' }, sM = { sm: 'S/M', lxl: 'L/XL' };
+      var perVarHtml = Object.keys(wantPerVar).sort().map(function (k) {
+        var pr = k.split('|');
+        return '<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0">'
+             + '<span>' + esc((pM[pr[0]] || pr[0]) + ' ' + (cM[pr[1]] || pr[1]) + ' ' + (sM[pr[2]] || pr[2])) + '</span>'
+             + '<strong>' + wantPerVar[k] + '</strong></div>';
+      }).join('');
+
+      var jmlOrang = Object.keys(perOrang).length + tanpaOrang;
       document.getElementById('jd-modal-batch-body').innerHTML =
-        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk ' + pendingBatch.length + ' pendaftar yang dipilih.' + allocWarnHtml;
+        'Akan generate <strong>' + pendingBatch.length + ' token</strong> untuk <strong>' + jmlOrang + ' orang</strong>.'
+        + '<div style="margin-top:10px;padding:8px 12px;background:var(--bg-2,#F7F5F2);border:1px solid var(--border);border-radius:8px;font-size:12.5px">'
+        + perVarHtml + '</div>'
+        + dobelHtml + pernahHtml + allocWarnHtml;
 
       // Pilih waktu berlaku di modal (single & batch sama-sama bisa) -- default
       // ambil dari dropdown action-bar (kalau bulk) atau 48 jam.
@@ -2283,6 +2368,7 @@
         });
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('status ' + res.status);
+        jdCatatAksi('blokir_token', null, email || token, null, { token: token });
         showToast('Token diblokir (di-expired). Link-nya udah mati.');
         loadTokens();
         loadWaitlist(currentPage);
@@ -2375,8 +2461,8 @@
 
         // ── KIRIM EMAIL ──
         var accessLink  = getAccessDomain() + '/jacket-access/?token=' + tokenToUse;
-        var firstName   = email.split('@')[0].split('.')[0];
-        firstName       = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+        var nmRes = await sbQuery('launch_waitlist_view?select=cust_nama&id=eq.' + waitlistId + '&limit=1');
+        var firstName = jdNamaDepan(nmRes.data && nmRes.data[0] && nmRes.data[0].cust_nama, email);
 
         var html = buildLaunchEmailHtml(firstName, (pMap[product]||product), (cMap[color]||color), (sMap[size]||size), accessLink, hours);
 
@@ -2395,7 +2481,8 @@
             headers: authHeaders({ 'Prefer': 'return=minimal' }),
             body: JSON.stringify({ status: 'invited' })
           });
-          showToast('Token ' + (type === 'new' ? 'baru dibuat' : 'direset') + ' & email terkirim ke ' + email);
+          jdCatatAksi('generate_token_tunggal', waitlistId, email, 1, { jam_berlaku: hours });
+          showToast('Token baru dibuat & email terkirim ke ' + email);
         } else {
           showToast('Token dibuat, tapi email GAGAL — status tetap pending, bisa dikirim ulang.', true);
         }
@@ -2458,6 +2545,10 @@
         // ada (jadi slot alokasi tetap kehitung dari token), status tetap
         // 'pending' sampai email sukses.
         lastBatchSent = pendingBatch.slice();
+        jdCatatAksi('generate_token', null, null, pendingBatch.length, {
+          jam_berlaku: mh,
+          email: pendingBatch.map(function (t) { return t.email; }).slice(0, 50)
+        });
         showToast(pendingBatch.length + ' token berhasil dibuat');
         pendingBatch = [];
         clearSelection();
@@ -2497,9 +2588,19 @@
 
       var sent = 0, failed = 0, gagalCatat = 0;
 
+      // Nama diambil SEKALI untuk seluruh batch, bukan satu permintaan per email.
+      var namaMap = {};
+      try {
+        var ids = lastBatchSent.map(function (x) { return x.waitlist_id; }).filter(Boolean);
+        if (ids.length) {
+          var nm = await sbQuery('launch_waitlist_view?select=id,cust_nama&id=in.(' + ids.join(',') + ')&limit=' + ids.length);
+          (nm.data || []).forEach(function (r) { namaMap[r.id] = r.cust_nama; });
+        }
+      } catch (e) { /* tanpa nama pun email tetap terkirim */ }
+
       for (var i = 0; i < lastBatchSent.length; i++) {
         var t = lastBatchSent[i];
-        var okSend = await jdSendOneAccessEmail(t);
+        var okSend = await jdSendOneAccessEmail(t, namaMap[t.waitlist_id]);
 
         // Dicatat SEGERA, satu per satu. Kalau proses berhenti di tengah jalan,
         // yang sudah terkirim sudah tersimpan statusnya.
@@ -2554,12 +2655,27 @@
     }
 
     // Kirim 1 email akses (dipakai batch & per-token). Return true kalau sukses.
-    async function jdSendOneAccessEmail(t) {
+    // Sapaan diambil dari nama asli di Customer Database kalau tersedia.
+    // Memotong dari alamat email menghasilkan sapaan yang jelas salah --
+    // "be.nnadarizky17@" jadi "Be", "workdindatalitha@" jadi "Workdindatalitha".
+    // Email yang salah menyapa terbaca seperti kiriman massal, padahal ini
+    // undangan pribadi.
+    function jdNamaDepan(nama, email) {
+      var n = (nama || '').trim();
+      if (n) {
+        var depan = n.split(/\s+/)[0];
+        if (depan.length >= 2) return depan.charAt(0).toUpperCase() + depan.slice(1).toLowerCase();
+      }
+      var f = (email || '').split('@')[0].split(/[._-]/)[0].replace(/[0-9]+$/, '');
+      if (f.length < 2) return 'there';   // lebih baik netral daripada "Be,"
+      return f.charAt(0).toUpperCase() + f.slice(1).toLowerCase();
+    }
+
+    async function jdSendOneAccessEmail(t, nama) {
       var pMap = { rhea: 'Rhea Flare Jacket', phi: 'Phi Jacket' };
       var cMap = { breen: 'Breen', auburn: 'Auburn' };
       var sMap = { sm: 'S/M', lxl: 'L/XL' };
-      var firstName = (t.email || '').split('@')[0].split('.')[0];
-      firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+      var firstName = jdNamaDepan(nama, t.email);
       var accessLink = getAccessDomain() + '/jacket-access/?token=' + t.token;
       // durasi di email = sisa jam token (fallback ke default batch).
       var hrs = t.expires_at ? Math.max(1, Math.round((new Date(t.expires_at) - new Date()) / 3600000)) : lastBatchHours;
@@ -2583,7 +2699,8 @@
       if (!t) { showToast('Token tidak ditemukan', true); return; }
       if (t.is_used) { showToast('Token sudah dipakai — tidak perlu kirim email', true); return; }
       showToast('Mengirim email...');
-      var ok = await jdSendOneAccessEmail(t);
+      var nm1 = await sbQuery('launch_waitlist_view?select=cust_nama&id=eq.' + t.waitlist_id + '&limit=1');
+      var ok = await jdSendOneAccessEmail(t, nm1.data && nm1.data[0] && nm1.data[0].cust_nama);
       if (!ok) {
         // Tandai GAGAL (persist) biar kebedain dari "belum dikirim".
         await fetch(SB_URL + '/rest/v1/launch_tokens?token=eq.' + encodeURIComponent(token), {
@@ -3052,6 +3169,7 @@
         });
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('Delete failed');
+        jdCatatAksi('alokasi_hapus_batch', null, label, null, null);
         showToast('Batch "' + label + '" dihapus');
         loadAllocations();
       } catch(e) {
@@ -3109,6 +3227,7 @@
         });
         if (handleAuthExpired(res.status)) return;
         if (!res.ok) throw new Error('Delete failed');
+        jdCatatAksi('alokasi_hapus_baris', null, null, null, { id: id });
         showToast('Alokasi dihapus');
         loadAllocations();
       } catch(e) {
