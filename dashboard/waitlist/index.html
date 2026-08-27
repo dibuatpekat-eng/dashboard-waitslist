@@ -311,6 +311,25 @@
     .jd-risk-chip.jd-risk-pasti { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
     /* "Pernah beli produk waitlist" -- biru, bahasa yang sudah dipakai badge
        badge-bought, supaya tidak tertukar dengan merah (jastip) atau teal (tier). */
+    /* Riwayat aksi -- dibaca berurutan seperti catatan, bukan tabel: yang
+       dicari operator biasanya "apa yang terjadi sekitar jam sekian",
+       bukan membandingkan kolom. */
+    .jd-riw-hari { padding: 10px 20px 6px; font-size: 10px; font-weight: 600;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--text-3);
+      border-top: 1px solid var(--border); background: var(--bg-2, #F7F5F2); }
+    .jd-riw-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 20px;
+      border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    .jd-riw-jam { flex-shrink: 0; width: 46px; color: var(--text-3); font-size: 11px;
+      font-variant-numeric: tabular-nums; padding-top: 1px; }
+    .jd-riw-garis { flex-shrink: 0; width: 3px; align-self: stretch; border-radius: 2px;
+      background: var(--border-strong, #C9C4BC); }
+    .jd-riw-isi { flex: 1; min-width: 0; }
+    .jd-riw-detail { font-size: 10.5px; color: var(--text-3); margin-top: 3px;
+      word-break: break-word; }
+    .jd-riw-oleh { font-size: 10.5px; color: var(--text-3); white-space: nowrap; flex-shrink: 0; }
+    .jd-riw-undangan .jd-riw-garis { background: #6FBFB5; }
+    .jd-riw-tinjau   .jd-riw-garis { background: #E3B57F; }
+    .jd-riw-bahaya   .jd-riw-garis { background: #E0A6A0; }
     .jd-beli-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
       font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
       color: var(--bought); background: var(--bought-bg); border: 1px solid var(--bought-border);
@@ -679,6 +698,7 @@
         <button class="jd-tab active" id="jd-tab-btn-waitlist" onclick="switchTab('waitlist')">Waitlist</button>
         <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
         <button class="jd-tab" id="jd-tab-btn-member" onclick="switchTab('member')">Member</button>
+        <button class="jd-tab" id="jd-tab-btn-riwayat" onclick="switchTab('riwayat')">Riwayat</button>
         <a class="jd-tab" href="https://dashboard-jastip.vercel.app" target="_blank" rel="noopener" title="Buka Dashboard Jastip di tab baru untuk cek manual" style="text-decoration:none">Dashboard Jastip&nbsp;↗</a>
       </div>
 
@@ -881,7 +901,43 @@
         </div>
       </div>
 
-      <!-- DATABASE JASTIP -->
+      <!-- RIWAYAT AKSI -->
+      <div class="jd-tab-panel" id="jd-tab-panel-riwayat">
+        <div class="jd-section">
+          <div class="jd-section-header">
+            <span class="jd-section-title">Riwayat Aksi <span style="font-weight:400;font-size:11px;color:var(--text-3)">— siapa melakukan apa, kapan. Hanya bisa ditambah, tidak bisa diubah atau dihapus.</span></span>
+            <div class="jd-controls">
+              <select id="jd-riwayat-filter" onchange="jdSetRiwayatFilter(this.value)" title="Filter jenis aksi">
+                <option value="">Semua Aksi</option>
+                <optgroup label="Undangan">
+                  <option value="generate_token">Generate token (batch)</option>
+                  <option value="generate_token_tunggal">Generate token (satuan)</option>
+                  <option value="kirim_email_batch">Kirim email</option>
+                  <option value="blokir_token">Blokir token</option>
+                </optgroup>
+                <optgroup label="Peninjauan">
+                  <option value="tandai_aman">Tandai aman</option>
+                  <option value="edit_entry">Edit entry</option>
+                </optgroup>
+                <optgroup label="Alokasi">
+                  <option value="alokasi_simpan_batch">Simpan batch</option>
+                  <option value="alokasi_hapus_batch">Hapus batch</option>
+                  <option value="alokasi_hapus_baris">Hapus baris alokasi</option>
+                </optgroup>
+              </select>
+              <button class="jd-btn jd-btn-outline" onclick="loadRiwayat()" title="Muat ulang riwayat">↻ Muat ulang</button>
+            </div>
+          </div>
+          <div id="jd-riwayat-body"><div class="jd-loading">Memuat...</div></div>
+          <div class="jd-pagination">
+            <span class="jd-pagination-info" id="jd-riwayat-pagination-info">—</span>
+            <div class="jd-pagination-controls">
+              <button class="jd-btn jd-btn-outline" id="jd-riwayat-btn-prev" onclick="jdRiwayatPage(-1)">← Prev</button>
+              <button class="jd-btn jd-btn-outline" id="jd-riwayat-btn-next" onclick="jdRiwayatPage(1)">Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div>
   </div>
@@ -1193,14 +1249,16 @@
     }
 
     function switchTab(name) {
-      // Tab 'jastip' (Database Jastip) sudah dihapus -> waitlist, tokens, member.
-      ['waitlist', 'tokens', 'member'].forEach(function(t) {
+      // Tab 'jastip' (Database Jastip) sudah dihapus. Yang ada: waitlist,
+      // tokens, member, riwayat.
+      ['waitlist', 'tokens', 'member', 'riwayat'].forEach(function(t) {
         var panel = document.getElementById('jd-tab-panel-' + t);
         var btn   = document.getElementById('jd-tab-btn-' + t);
         if (panel) panel.classList.toggle('active', t === name);
         if (btn)   btn.classList.toggle('active', t === name);
       });
       if (name === 'member') loadMembers();
+      if (name === 'riwayat') loadRiwayat();
       // Kartu ringkasan atas (metrik Waitlist) sekarang tampil di SEMUA tab —
       // operator minta tetap keliatan pas di tab Token juga. Klik kartu otomatis
       // pindah ke tab Waitlist + filter (lihat filterByStat).
@@ -3001,6 +3059,121 @@
       }
     }
 
+
+    // ── RIWAYAT AKSI ─────────────────────────────────────────
+    // Membaca launch_action_log (append-only; kolom "oleh" diisi trigger dari
+    // JWT, jadi tidak bisa dikarang oleh browser). Ini satu-satunya tempat untuk
+    // menjawab "kenapa orang ini dapat undangan?" atau "siapa yang menandai dia
+    // aman?" -- pertanyaan yang sebelumnya tidak punya jawaban sama sekali.
+    var RIWAYAT_PAGE_SIZE = 60;
+    var riwayatPage = 1;
+    var riwayatFilter = '';
+
+    function jdSetRiwayatFilter(v) { riwayatFilter = v || ''; riwayatPage = 1; loadRiwayat(); }
+    function jdRiwayatPage(d) { riwayatPage = Math.max(1, riwayatPage + d); loadRiwayat(); }
+
+    // Kode aksi -> kalimat. Kode mentah ("alokasi_hapus_batch") memaksa pembaca
+    // menerjemahkan sendiri, dan riwayat yang harus diterjemahkan tidak dibaca.
+    function jdRiwayatKalimat(r) {
+      var n = r.jumlah, t = esc(r.target_teks || ''), d = r.detail || {};
+      switch (r.aksi) {
+        case 'generate_token':
+          return 'Membuat <strong>' + (n || 0) + ' token</strong> undangan'
+               + (d.jam_berlaku ? ' <span style="color:var(--text-3)">(berlaku ' + d.jam_berlaku + ' jam)</span>' : '');
+        case 'generate_token_tunggal':
+          return 'Membuat token untuk <strong>' + t + '</strong>'
+               + (d.jam_berlaku ? ' <span style="color:var(--text-3)">(berlaku ' + d.jam_berlaku + ' jam)</span>' : '');
+        case 'kirim_email_batch':
+          return 'Mengirim <strong>' + (n || 0) + ' email</strong> undangan'
+               + (d.gagal ? ' <span style="color:var(--flag)">· ' + d.gagal + ' gagal</span>' : '')
+               + (d.gagal_catat ? ' <span style="color:var(--flag)">· ' + d.gagal_catat + ' status gagal disimpan</span>' : '');
+        case 'blokir_token':   return 'Memblokir token milik <strong>' + t + '</strong>';
+        case 'tandai_aman':    return 'Menandai <strong>' + t + '</strong> aman';
+        case 'edit_entry':     return 'Mengubah data <strong>' + t + '</strong>';
+        case 'alokasi_simpan_batch':
+          return 'Menyimpan alokasi batch <strong>' + t + '</strong>'
+               + (n ? ' <span style="color:var(--text-3)">(' + n + ' variasi'
+                    + (d.total_unit ? ', ' + d.total_unit + ' unit' : '') + ')</span>' : '');
+        case 'alokasi_hapus_batch': return 'Menghapus batch alokasi <strong>' + t + '</strong>';
+        case 'alokasi_hapus_baris': return 'Menghapus satu baris alokasi';
+        default: return esc(r.aksi) + (t ? ' — ' + t : '');
+      }
+    }
+
+    function jdRiwayatKelas(aksi) {
+      if (aksi === 'blokir_token' || aksi === 'alokasi_hapus_batch' || aksi === 'alokasi_hapus_baris') return 'jd-riw-bahaya';
+      if (aksi === 'tandai_aman' || aksi === 'edit_entry') return 'jd-riw-tinjau';
+      return 'jd-riw-undangan';
+    }
+
+    // Keterangan tambahan yang layak dibaca, bukan seluruh isi jsonb.
+    function jdRiwayatDetail(r) {
+      var d = r.detail || {};
+      if (r.aksi === 'generate_token' && Array.isArray(d.email) && d.email.length) {
+        var tampil = d.email.slice(0, 6).map(esc).join(', ');
+        var sisa = d.email.length - 6;
+        return tampil + (sisa > 0 ? ' <span style="color:var(--text-3)">+' + sisa + ' lagi</span>' : '');
+      }
+      if (r.aksi === 'tandai_aman' && d.alasan_flag) return 'Alasan flag: ' + esc(d.alasan_flag);
+      if (r.aksi === 'edit_entry' && d.token_ikut_diperbarui === false) {
+        return '<span style="color:var(--flag)">Token lamanya gagal ikut diperbarui</span>';
+      }
+      return '';
+    }
+
+    function jdLabelHari(iso) {
+      var d = new Date(iso);
+      var hari = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      var kini = new Date(); kini = new Date(kini.getFullYear(), kini.getMonth(), kini.getDate()).getTime();
+      var selisih = Math.round((kini - hari) / 86400000);
+      if (selisih === 0) return 'Hari ini';
+      if (selisih === 1) return 'Kemarin';
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    async function loadRiwayat() {
+      var el = document.getElementById('jd-riwayat-body');
+      if (!el) return;
+      el.innerHTML = '<div class="jd-loading">Memuat...</div>';
+
+      var q = 'launch_action_log?select=*&order=created_at.desc';
+      if (riwayatFilter) q += '&aksi=eq.' + encodeURIComponent(riwayatFilter);
+      var from = (riwayatPage - 1) * RIWAYAT_PAGE_SIZE;
+      var res = await sbQuery(q, {
+        headers: { 'Prefer': 'count=exact', 'Range': from + '-' + (from + RIWAYAT_PAGE_SIZE - 1), 'Range-Unit': 'items' }
+      });
+
+      var total = res.count || 0;
+      var totalPages = Math.max(1, Math.ceil(total / RIWAYAT_PAGE_SIZE));
+      var info = document.getElementById('jd-riwayat-pagination-info');
+      if (info) info.textContent = total ? ((from + 1) + '–' + Math.min(from + RIWAYAT_PAGE_SIZE, total) + ' dari ' + total + ' aksi') : '0 aksi';
+      var bp = document.getElementById('jd-riwayat-btn-prev'); if (bp) bp.disabled = riwayatPage <= 1;
+      var bn = document.getElementById('jd-riwayat-btn-next'); if (bn) bn.disabled = riwayatPage >= totalPages;
+
+      if (!res.data.length) {
+        el.innerHTML = '<div class="jd-empty">' + (riwayatFilter
+          ? 'Belum ada aksi jenis ini.'
+          : 'Belum ada aksi tercatat. Pencatatan dimulai 27 Agustus 2026 — aksi sebelum itu tidak terekam.') + '</div>';
+        return;
+      }
+
+      var html = '', hariTerakhir = null;
+      res.data.forEach(function (r) {
+        var hari = jdLabelHari(r.created_at);
+        if (hari !== hariTerakhir) { html += '<div class="jd-riw-hari">' + esc(hari) + '</div>'; hariTerakhir = hari; }
+        var jam = new Date(r.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        var det = jdRiwayatDetail(r);
+        html += '<div class="jd-riw-row ' + jdRiwayatKelas(r.aksi) + '">' +
+          '<span class="jd-riw-jam">' + esc(jam) + '</span>' +
+          '<span class="jd-riw-garis"></span>' +
+          '<span class="jd-riw-isi">' + jdRiwayatKalimat(r) +
+            (det ? '<div class="jd-riw-detail">' + det + '</div>' : '') +
+          '</span>' +
+          '<span class="jd-riw-oleh">' + esc(r.oleh || '—') + '</span>' +
+        '</div>';
+      });
+      el.innerHTML = html;
+    }
 
     // ── ALOKASI ──────────────────────────────────────────────
     var allocFormOpen = false;
