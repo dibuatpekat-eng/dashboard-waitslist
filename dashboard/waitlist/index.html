@@ -314,6 +314,10 @@
     /* Riwayat aksi -- dibaca berurutan seperti catatan, bukan tabel: yang
        dicari operator biasanya "apa yang terjadi sekitar jam sekian",
        bukan membandingkan kolom. */
+    /* Arsip -- netral saat diam, merah saat disentuh: menyingkirkan orang dari
+       seluruh daftar itu konsekuensial, tapi bukan tindakan yang perlu berteriak
+       sepanjang waktu. */
+    .jd-mark-btn.jd-mark-arsip:hover { color: #8C1D18; }
     .jd-riw-hari { padding: 10px 20px 6px; font-size: 10px; font-weight: 600;
       letter-spacing: .12em; text-transform: uppercase; color: var(--text-3);
       border-top: 1px solid var(--border); background: var(--bg-2, #F7F5F2); }
@@ -699,6 +703,7 @@
         <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
         <button class="jd-tab" id="jd-tab-btn-member" onclick="switchTab('member')">Member</button>
         <button class="jd-tab" id="jd-tab-btn-riwayat" onclick="switchTab('riwayat')">Riwayat</button>
+        <button class="jd-tab" id="jd-tab-btn-arsip" onclick="switchTab('arsip')">Arsip</button>
         <a class="jd-tab" href="https://dashboard-jastip.vercel.app" target="_blank" rel="noopener" title="Buka Dashboard Jastip di tab baru untuk cek manual" style="text-decoration:none">Dashboard Jastip&nbsp;↗</a>
       </div>
 
@@ -771,6 +776,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <button class="jd-btn" style="background:transparent;color:#F7F6F4;border:1px solid rgba(255,255,255,0.3);font-size:11px;" onclick="clearSelection()">Batal</button>
+            <button class="jd-btn" style="background:transparent;color:#F0B8B2;border:1px solid rgba(240,184,178,0.45);font-size:11px;" onclick="jdArsipkanTerpilih()" title="Sembunyikan yang dipilih dari semua daftar">Arsipkan</button>
             <button class="jd-btn" style="background:#F7F6F4;color:var(--text);font-size:11px;" onclick="generateSelected()">Generate & Kirim Token</button>
           </div>
         </div>
@@ -901,6 +907,28 @@
         </div>
       </div>
 
+      <!-- ARSIP -->
+      <div class="jd-tab-panel" id="jd-tab-panel-arsip">
+        <div class="jd-section">
+          <div class="jd-section-header">
+            <span class="jd-section-title">Arsip <span style="font-weight:400;font-size:11px;color:var(--text-3)">— disingkirkan dari semua daftar. Tidak dihapus: bisa dikembalikan kapan saja.</span></span>
+            <div class="jd-controls">
+              <input type="text" id="jd-arsip-search" placeholder="Cari email / nama..." oninput="jdArsipSearchDebounced()" style="font-family:'Jost',sans-serif;font-size:12px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);padding:6px 10px;outline:none;min-width:170px">
+              <button class="jd-btn jd-btn-outline" onclick="loadArsip()" title="Muat ulang">↻ Muat ulang</button>
+            </div>
+          </div>
+          <div style="padding:12px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)" id="jd-arsip-summary">—</div>
+          <div id="jd-arsip-body"><div class="jd-loading">Memuat...</div></div>
+          <div class="jd-pagination">
+            <span class="jd-pagination-info" id="jd-arsip-pagination-info">—</span>
+            <div class="jd-pagination-controls">
+              <button class="jd-btn jd-btn-outline" id="jd-arsip-btn-prev" onclick="jdArsipPage(-1)">← Prev</button>
+              <button class="jd-btn jd-btn-outline" id="jd-arsip-btn-next" onclick="jdArsipPage(1)">Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- RIWAYAT AKSI -->
       <div class="jd-tab-panel" id="jd-tab-panel-riwayat">
         <div class="jd-section">
@@ -918,6 +946,11 @@
                 <optgroup label="Peninjauan">
                   <option value="tandai_aman">Tandai aman</option>
                   <option value="edit_entry">Edit entry</option>
+                </optgroup>
+                <optgroup label="Arsip">
+                  <option value="arsipkan">Arsipkan</option>
+                  <option value="arsipkan_massal">Arsipkan (banyak)</option>
+                  <option value="pulihkan_arsip">Kembalikan dari arsip</option>
                 </optgroup>
                 <optgroup label="Alokasi">
                   <option value="alokasi_simpan_batch">Simpan batch</option>
@@ -1053,13 +1086,15 @@
     // Icon tanda (monokrom, currentColor) -- star = shortlist, mata = aware.
     var MARK_ICON = {
       shortlisted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6L12 16.9 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',
-      aware: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>'
+      aware: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+      arsip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>'
     };
     // 2 tombol tanda utk satu baris (dipakai render awal + update in-place).
     function jdMarkBtns(id, mk) {
       mk = mk || '';
       return '<button class="jd-mark-btn' + (mk === 'shortlisted' ? ' on-star' : '') + '" title="Shortlist" onclick="event.stopPropagation(); jdSetMark(\'' + id + '\',\'shortlisted\',\'' + mk + '\')">' + MARK_ICON.shortlisted + '</button>'
-        + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on-aware' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>';
+        + '<button class="jd-mark-btn' + (mk === 'aware' ? ' on-aware' : '') + '" title="Aware" onclick="event.stopPropagation(); jdSetMark(\'' + id + '\',\'aware\',\'' + mk + '\')">' + MARK_ICON.aware + '</button>'
+        + '<button class="jd-mark-btn jd-mark-arsip" title="Arsipkan — sembunyikan dari semua daftar" onclick="event.stopPropagation(); jdArsipkan(\'' + id + '\')">' + MARK_ICON.arsip + '</button>';
     }
 
     // Satu dropdown gabungan (Tahap + Tanda). Nilai berbentuk "stage:x" / "mark:x".
@@ -1251,7 +1286,7 @@
     function switchTab(name) {
       // Tab 'jastip' (Database Jastip) sudah dihapus. Yang ada: waitlist,
       // tokens, member, riwayat.
-      ['waitlist', 'tokens', 'member', 'riwayat'].forEach(function(t) {
+      ['waitlist', 'tokens', 'member', 'riwayat', 'arsip'].forEach(function(t) {
         var panel = document.getElementById('jd-tab-panel-' + t);
         var btn   = document.getElementById('jd-tab-btn-' + t);
         if (panel) panel.classList.toggle('active', t === name);
@@ -1259,6 +1294,7 @@
       });
       if (name === 'member') loadMembers();
       if (name === 'riwayat') loadRiwayat();
+      if (name === 'arsip')   loadArsip();
       // Kartu ringkasan atas (metrik Waitlist) sekarang tampil di SEMUA tab —
       // operator minta tetap keliatan pas di tab Token juga. Klik kartu otomatis
       // pindah ke tab Waitlist + filter (lihat filterByStat).
@@ -3060,6 +3096,168 @@
     }
 
 
+    // ── ARSIP ────────────────────────────────────────────────
+    // Menyingkirkan pendaftar dari SEMUA daftar tanpa menghapusnya. Penyaringan
+    // dilakukan di lapisan view (launch_waitlist_view sudah tidak memuat yang
+    // diarsipkan), jadi tidak ada satu pun kueri di sini yang perlu mengingat
+    // untuk menyaring -- lupa adalah keadaan yang aman.
+    var ARSIP_PAGE_SIZE = 50;
+    var arsipPage = 1, arsipSearch = '', jdArsipTimer = null;
+
+    function jdArsipPage(d) { arsipPage = Math.max(1, arsipPage + d); loadArsip(); }
+    function jdArsipSearchDebounced() {
+      clearTimeout(jdArsipTimer);
+      jdArsipTimer = setTimeout(function () {
+        arsipSearch = document.getElementById('jd-arsip-search').value.trim();
+        arsipPage = 1; loadArsip();
+      }, 300);
+    }
+
+    // Alasan ditebak dari kondisi barisnya. Kolom alasan yang selalu kosong
+    // tidak menjelaskan apa pun tiga bulan kemudian; menawarkan tebakan yang
+    // tinggal disetujui membuatnya benar-benar terisi.
+    function jdTebakAlasan(r) {
+      if (!r) return '';
+      if (r.cust_jastip_pasti) return 'jastip';
+      if (r.cust_internal)     return 'akun internal / uji';
+      if (r.orang_jml_baris > 1) return 'daftar ganda';
+      if (r.already_purchased) return 'sudah pernah dapat';
+      return '';
+    }
+
+    async function jdArsipkan(id) {
+      var r = await sbQuery('launch_waitlist_view?select=*&id=eq.' + id + '&limit=1');
+      var row = r.data && r.data[0];
+      if (!row) { showToast('Entry tidak ditemukan (mungkin sudah diarsipkan).', true); loadWaitlist(currentPage); return; }
+
+      var alasan = prompt(
+        'Arsipkan ' + (row.cust_nama ? row.cust_nama + ' (' + row.email + ')' : row.email) + '?\n\n' +
+        'Dia akan hilang dari semua daftar dan hitungan, tapi TIDAK dihapus — bisa dikembalikan dari tab Arsip.\n\n' +
+        'Alasannya (buat catatan):', jdTebakAlasan(row));
+      if (alasan === null) return;
+
+      var ok = await jdPatchDiam('launch_waitlist?id=eq.' + id,
+        { archived_at: new Date().toISOString(), archived_reason: (alasan || '').trim() || null });
+      if (!ok) { showToast('Gagal mengarsipkan.', true); return; }
+
+      jdCatatAksi('arsipkan', id, row.email, 1, { alasan: alasan || null });
+
+      // Mengarsipkan TIDAK mematikan link yang sudah terkirim. Kalau dibiarkan
+      // diam-diam, orang yang sudah "disingkirkan" masih bisa checkout.
+      if (row.punya_token_aktif) {
+        if (confirm('Orang ini masih punya token AKTIF — link undangannya masih hidup dan dia masih bisa checkout.\n\nBlokir token itu sekalian?')) {
+          var okTok = await jdPatchDiam('launch_tokens?waitlist_id=eq.' + id + '&is_used=is.false',
+            { expires_at: new Date(Date.now() - 60000).toISOString() });
+          jdCatatAksi('blokir_token', id, row.email, null, { sebab: 'ikut diarsipkan' });
+          showToast(okTok ? 'Diarsipkan & token diblokir.' : 'Diarsipkan, tapi token gagal diblokir — cek tab Token.', !okTok);
+        } else {
+          showToast('Diarsipkan. Token lamanya SENGAJA dibiarkan aktif.');
+        }
+      } else {
+        showToast('Diarsipkan. Bisa dikembalikan dari tab Arsip.');
+      }
+      loadWaitlist(currentPage);
+      loadStats();
+    }
+
+    async function jdArsipkanTerpilih() {
+      var rows = Object.values(selectedRows);
+      if (!rows.length) return;
+      var aktif = rows.filter(function (x) { return x.punya_token_aktif; }).length;
+      var alasan = prompt(
+        'Arsipkan ' + rows.length + ' pendaftar terpilih?\n\n' +
+        'Mereka hilang dari semua daftar dan hitungan, tapi tidak dihapus.\n' +
+        (aktif ? '\n' + aktif + ' di antaranya masih punya token AKTIF — token itu TIDAK ikut diblokir di sini; blokir satu per satu dari tab Token kalau perlu.\n' : '') +
+        '\nAlasannya (buat catatan):', '');
+      if (alasan === null) return;
+
+      var ids = rows.map(function (x) { return x.id; });
+      var ok = await jdPatchDiam('launch_waitlist?id=in.(' + ids.join(',') + ')',
+        { archived_at: new Date().toISOString(), archived_reason: (alasan || '').trim() || null });
+      if (!ok) { showToast('Gagal mengarsipkan.', true); return; }
+
+      jdCatatAksi('arsipkan_massal', null, null, ids.length,
+                  { alasan: alasan || null, token_aktif_dibiarkan: aktif });
+      showToast(ids.length + ' pendaftar diarsipkan.'
+        + (aktif ? ' ' + aktif + ' token aktif dibiarkan hidup — cek tab Token.' : ''));
+      clearSelection();
+      loadWaitlist(currentPage);
+      loadStats();
+    }
+
+    async function jdPulihkan(id, email) {
+      if (!confirm('Kembalikan ' + (email || 'entry ini') + ' ke daftar?\n\n'
+                 + 'Dia muncul lagi di semua daftar dan hitungan seperti semula.')) return;
+      // archived_by & archived_reason ikut dikosongkan oleh trigger di database.
+      var ok = await jdPatchDiam('launch_waitlist?id=eq.' + id, { archived_at: null });
+      if (!ok) { showToast('Gagal mengembalikan.', true); return; }
+      jdCatatAksi('pulihkan_arsip', id, email, 1, null);
+      showToast('Dikembalikan ke daftar.');
+      loadArsip();
+      loadStats();
+    }
+
+    async function loadArsip() {
+      var el = document.getElementById('jd-arsip-body');
+      if (!el) return;
+      el.innerHTML = '<div class="jd-loading">Memuat...</div>';
+
+      var q = 'launch_waitlist_arsip?select=*&order=archived_at.desc';
+      if (arsipSearch) {
+        var st = arsipSearch.replace(/[(),]/g, '');
+        q += '&or=(email.ilike.*' + encodeURIComponent(st) + '*,cust_nama.ilike.*' + encodeURIComponent(st) + '*)';
+      }
+      var from = (arsipPage - 1) * ARSIP_PAGE_SIZE;
+      var res = await sbQuery(q, {
+        headers: { 'Prefer': 'count=exact', 'Range': from + '-' + (from + ARSIP_PAGE_SIZE - 1), 'Range-Unit': 'items' }
+      });
+
+      var total = res.count || 0;
+      var totalPages = Math.max(1, Math.ceil(total / ARSIP_PAGE_SIZE));
+      var info = document.getElementById('jd-arsip-pagination-info');
+      if (info) info.textContent = total ? ((from + 1) + '–' + Math.min(from + ARSIP_PAGE_SIZE, total) + ' dari ' + total) : '0 entry';
+      var bp = document.getElementById('jd-arsip-btn-prev'); if (bp) bp.disabled = arsipPage <= 1;
+      var bn = document.getElementById('jd-arsip-btn-next'); if (bn) bn.disabled = arsipPage >= totalPages;
+
+      var sum = document.getElementById('jd-arsip-summary');
+      var masihAktif = (res.data || []).filter(function (x) { return x.punya_token_aktif; }).length;
+      if (sum) sum.innerHTML = '<strong>' + total + '</strong> entry diarsipkan'
+        + (masihAktif ? ' · <span style="color:var(--flag)"><strong>' + masihAktif + '</strong> masih punya token aktif di halaman ini</span>' : '')
+        + ' <span style="color:var(--text-3)">— tidak muncul di Waitlist, Member, maupun hitungan ringkasan.</span>';
+
+      if (!res.data.length) {
+        el.innerHTML = '<div class="jd-empty">' + (arsipSearch ? 'Tidak ada yang cocok.' : 'Arsip masih kosong.') + '</div>';
+        return;
+      }
+
+      var pMap = { rhea: 'Rhea', phi: 'Phi' }, cMap = { breen: 'Breen', auburn: 'Auburn' }, sMap = { sm: 'S/M', lxl: 'L/XL' };
+      el.innerHTML = res.data.map(function (r) {
+        var idJs = String(r.id).replace(/['\\]/g, '\\$&');
+        var mailJs = String(r.email || '').replace(/['\\]/g, '\\$&');
+        var tag = [];
+        if (r.cust_jastip_pasti)   tag.push('<span class="jd-risk-chip jd-risk-pasti">Jastip</span>');
+        if (r.orang_jml_baris > 1) tag.push('<span class="jd-dup-chip jd-dup-orang">' + r.orang_jml_baris + '\u00d7 daftar</span>');
+        if (r.already_purchased)   tag.push('<span class="jd-beli-chip">Pernah beli</span>');
+        if (r.tier_nama)           tag.push('<span class="jd-loyal-chip jd-tier-' + String(r.tier_nama).toLowerCase() + '">' + esc(r.tier_nama) + '</span>');
+        if (r.punya_token_aktif)   tag.push('<span class="jd-risk-chip jd-risk-pasti" title="Link undangannya masih hidup — dia masih bisa checkout.">Token masih aktif</span>');
+        return '<div class="jd-dup-row" style="padding:10px 20px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="word-break:break-all">' + esc(r.cust_nama || r.email || '\u2014') +
+              (r.cust_nama ? ' <span style="color:var(--text-3);font-size:11px">' + esc(r.email || '') + '</span>' : '') +
+              ' ' + tag.join(' ') + '</div>' +
+            '<div class="jd-dup-why">' +
+              esc((pMap[r.product] || r.product || '') + ' ' + (cMap[r.color] || r.color || '') + ' ' + (sMap[r.size] || r.size || '')) +
+              ' \u00b7 diarsipkan ' + esc(fmtDate(r.archived_at)) +
+              (r.archived_by ? ' oleh ' + esc(r.archived_by) : '') +
+              (r.archived_reason ? ' \u00b7 <strong>' + esc(r.archived_reason) + '</strong>' : '') +
+            '</div>' +
+          '</div>' +
+          '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px;flex-shrink:0" ' +
+            'onclick="jdPulihkan(\'' + idJs + '\', \'' + mailJs + '\')">Kembalikan</button>' +
+        '</div>';
+      }).join('');
+    }
+
     // ── RIWAYAT AKSI ─────────────────────────────────────────
     // Membaca launch_action_log (append-only; kolom "oleh" diisi trigger dari
     // JWT, jadi tidak bisa dikarang oleh browser). Ini satu-satunya tempat untuk
@@ -3087,7 +3285,12 @@
           return 'Mengirim <strong>' + (n || 0) + ' email</strong> undangan'
                + (d.gagal ? ' <span style="color:var(--flag)">· ' + d.gagal + ' gagal</span>' : '')
                + (d.gagal_catat ? ' <span style="color:var(--flag)">· ' + d.gagal_catat + ' status gagal disimpan</span>' : '');
-        case 'blokir_token':   return 'Memblokir token milik <strong>' + t + '</strong>';
+        case 'blokir_token':
+          return 'Memblokir token milik <strong>' + t + '</strong>'
+               + (d.sebab ? ' <span style="color:var(--text-3)">(' + esc(d.sebab) + ')</span>' : '');
+        case 'arsipkan':        return 'Mengarsipkan <strong>' + t + '</strong>';
+        case 'arsipkan_massal': return 'Mengarsipkan <strong>' + (n || 0) + ' pendaftar</strong>';
+        case 'pulihkan_arsip':  return 'Mengembalikan <strong>' + t + '</strong> dari arsip';
         case 'tandai_aman':    return 'Menandai <strong>' + t + '</strong> aman';
         case 'edit_entry':     return 'Mengubah data <strong>' + t + '</strong>';
         case 'alokasi_simpan_batch':
@@ -3101,7 +3304,8 @@
     }
 
     function jdRiwayatKelas(aksi) {
-      if (aksi === 'blokir_token' || aksi === 'alokasi_hapus_batch' || aksi === 'alokasi_hapus_baris') return 'jd-riw-bahaya';
+      if (aksi === 'blokir_token' || aksi === 'alokasi_hapus_batch' || aksi === 'alokasi_hapus_baris'
+       || aksi === 'arsipkan' || aksi === 'arsipkan_massal') return 'jd-riw-bahaya';
       if (aksi === 'tandai_aman' || aksi === 'edit_entry') return 'jd-riw-tinjau';
       return 'jd-riw-undangan';
     }
@@ -3115,6 +3319,10 @@
         return tampil + (sisa > 0 ? ' <span style="color:var(--text-3)">+' + sisa + ' lagi</span>' : '');
       }
       if (r.aksi === 'tandai_aman' && d.alasan_flag) return 'Alasan flag: ' + esc(d.alasan_flag);
+      if ((r.aksi === 'arsipkan' || r.aksi === 'arsipkan_massal') && d.alasan) {
+        return 'Alasan: ' + esc(d.alasan)
+             + (d.token_aktif_dibiarkan ? ' <span style="color:var(--flag)">· ' + d.token_aktif_dibiarkan + ' token aktif dibiarkan</span>' : '');
+      }
       if (r.aksi === 'edit_entry' && d.token_ikut_diperbarui === false) {
         return '<span style="color:var(--flag)">Token lamanya gagal ikut diperbarui</span>';
       }
