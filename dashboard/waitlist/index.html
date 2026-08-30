@@ -3130,14 +3130,14 @@
       var row = r.data && r.data[0];
       if (!row) { showToast('Entry tidak ditemukan (mungkin sudah diarsipkan).', true); loadWaitlist(currentPage); return; }
 
-      var alasan = prompt(
+      var alasan = jdTebakAlasan(row);   // ditebak sistem, tidak diketik operator
+      if (!confirm(
         'Arsipkan ' + (row.cust_nama ? row.cust_nama + ' (' + row.email + ')' : row.email) + '?\n\n' +
-        'Dia akan hilang dari semua daftar dan hitungan, tapi TIDAK dihapus — bisa dikembalikan dari tab Arsip.\n\n' +
-        'Alasannya (buat catatan):', jdTebakAlasan(row));
-      if (alasan === null) return;
+        'Dia hilang dari semua daftar dan hitungan, tapi TIDAK dihapus — bisa dikembalikan dari tab Arsip.'
+        + (alasan ? '\n\nDicatat sebagai: ' + alasan : ''))) return;
 
       var ok = await jdPatchDiam('launch_waitlist?id=eq.' + id,
-        { archived_at: new Date().toISOString(), archived_reason: (alasan || '').trim() || null });
+        { archived_at: new Date().toISOString(), archived_reason: alasan || null });
       if (!ok) { showToast('Gagal mengarsipkan.', true); return; }
 
       jdCatatAksi('arsipkan', id, row.email, 1, { alasan: alasan || null });
@@ -3164,22 +3164,32 @@
       var rows = Object.values(selectedRows);
       if (!rows.length) return;
       var aktif = rows.filter(function (x) { return x.punya_token_aktif; }).length;
-      var alasan = prompt(
+      if (!confirm(
         'Arsipkan ' + rows.length + ' pendaftar terpilih?\n\n' +
-        'Mereka hilang dari semua daftar dan hitungan, tapi tidak dihapus.\n' +
-        (aktif ? '\n' + aktif + ' di antaranya masih punya token AKTIF — token itu TIDAK ikut diblokir di sini; blokir satu per satu dari tab Token kalau perlu.\n' : '') +
-        '\nAlasannya (buat catatan):', '');
-      if (alasan === null) return;
+        'Mereka hilang dari semua daftar dan hitungan, tapi tidak dihapus.'
+        + (aktif ? '\n\n' + aktif + ' di antaranya masih punya token AKTIF — token itu TIDAK ikut diblokir di sini.' : ''))) return;
 
-      var ids = rows.map(function (x) { return x.id; });
-      var ok = await jdPatchDiam('launch_waitlist?id=in.(' + ids.join(',') + ')',
-        { archived_at: new Date().toISOString(), archived_reason: (alasan || '').trim() || null });
-      if (!ok) { showToast('Gagal mengarsipkan.', true); return; }
+      // Dikelompokkan per alasan tebakan, lalu satu permintaan per kelompok.
+      // Satu alasan seragam untuk semua akan mencatat baris "jastip" dan
+      // "daftar ganda" sebagai hal yang sama.
+      var grup = {};
+      rows.forEach(function (r) { (grup[jdTebakAlasan(r) || ''] = grup[jdTebakAlasan(r) || ''] || []).push(r.id); });
 
-      jdCatatAksi('arsipkan_massal', null, null, ids.length,
-                  { alasan: alasan || null, token_aktif_dibiarkan: aktif });
-      showToast(ids.length + ' pendaftar diarsipkan.'
-        + (aktif ? ' ' + aktif + ' token aktif dibiarkan hidup — cek tab Token.' : ''));
+      var waktu = new Date().toISOString(), gagal = 0, total = 0;
+      for (var kunci in grup) {
+        var g = grup[kunci];
+        var okg = await jdPatchDiam('launch_waitlist?id=in.(' + g.join(',') + ')',
+          { archived_at: waktu, archived_reason: kunci || null });
+        if (okg) total += g.length; else gagal += g.length;
+      }
+      if (!total) { showToast('Gagal mengarsipkan.', true); return; }
+
+      jdCatatAksi('arsipkan_massal', null, null, total,
+                  { alasan: Object.keys(grup).filter(Boolean).join(', ') || null,
+                    token_aktif_dibiarkan: aktif, gagal: gagal });
+      showToast(total + ' pendaftar diarsipkan.'
+        + (gagal ? ' ' + gagal + ' GAGAL — coba lagi.' : '')
+        + (aktif ? ' ' + aktif + ' token aktif dibiarkan hidup — cek tab Token.' : ''), gagal > 0);
       clearSelection();
       loadWaitlist(currentPage);
       loadStats();
