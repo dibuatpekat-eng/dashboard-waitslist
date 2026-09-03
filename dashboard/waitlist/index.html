@@ -3162,6 +3162,19 @@
     var dmFilter = '';
     var dmVarian = [];
 
+    // Nama tampilan dibentuk dari nilainya sendiri kalau tidak ada di peta.
+    // Peta yang di-hardcode berarti tiap produk DM baru menuntut edit kode --
+    // dan yang terlupa akan tampil sebagai 'semi-cropped-blazer' di layar.
+    var LABEL_TETAP = { rhea: 'Rhea', phi: 'Phi', breen: 'Breen', auburn: 'Auburn', sm: 'S/M', lxl: 'L/XL' };
+    function jdLabel(v) {
+      if (v == null || v === '') return '';
+      if (LABEL_TETAP[v]) return LABEL_TETAP[v];
+      if (String(v).length <= 2) return String(v).toUpperCase();          // s, m, l, xl
+      return String(v).split('-').map(function (w) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }).join(' ');
+    }
+
     function jdSetDmFilter(v) { dmFilter = v || ''; loadDmLinks(); }
 
     function jdToggleDmForm() {
@@ -3176,10 +3189,9 @@
       if (dmVarian.length) return;
       var r = await sbQuery('launch_variations?select=product,color,size,private_variation_id,private_product_url&order=product,color,size');
       dmVarian = (r.data || []).filter(function (v) { return v.private_product_url && v.private_variation_id; });
-      var pM = { rhea: 'Rhea', phi: 'Phi' }, cM = { breen: 'Breen', auburn: 'Auburn' }, sM = { sm: 'S/M', lxl: 'L/XL' };
       sel.innerHTML = dmVarian.length
         ? dmVarian.map(function (v, i) {
-            return '<option value="' + i + '">' + esc((pM[v.product] || v.product) + ' · ' + (cM[v.color] || v.color) + ' · ' + (sM[v.size] || v.size)) + '</option>';
+            return '<option value="' + i + '">' + esc(jdLabel(v.product) + ' · ' + jdLabel(v.color) + ' · ' + jdLabel(v.size)) + '</option>';
           }).join('')
         : '<option value="">(belum ada produk private terdaftar)</option>';
     }
@@ -3191,7 +3203,7 @@
 
       var jml = Math.max(1, Math.min(50, parseInt(document.getElementById('jd-dm-jumlah').value, 10) || 1));
       var jam = parseInt(document.getElementById('jd-dm-jam').value, 10) || 6;
-      if (!confirm('Buat ' + jml + ' link untuk ' + v.product + ' ' + v.color + ' ' + v.size + '?\n\n'
+      if (!confirm('Buat ' + jml + ' link untuk ' + jdLabel(v.product) + ' ' + jdLabel(v.color) + ' ' + jdLabel(v.size) + '?\n\n'
                  + 'Berlaku ' + jam + ' jam, masing-masing sekali pakai.')) return;
 
       var exp = new Date(Date.now() + jam * 3600000).toISOString();
@@ -3271,7 +3283,6 @@
         return;
       }
 
-      var pM = { rhea: 'Rhea', phi: 'Phi' }, cM = { breen: 'Breen', auburn: 'Auburn' }, sM = { sm: 'S/M', lxl: 'L/XL' };
       var badge = { aktif: 'badge-clean', dipakai: 'badge-bought', expired: 'badge-expired' };
       el.innerHTML = res.data.map(function (r) {
         var linkJs = String(r.link || '').replace(/['\\]/g, '\\$&');
@@ -3280,7 +3291,7 @@
           '<div style="flex:1;min-width:0">' +
             '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
               '<span class="badge ' + (badge[r.status] || '') + '">' + esc(r.status) + '</span>' +
-              '<strong>' + esc((pM[r.product] || r.product || '') + ' ' + (cM[r.color] || r.color || '') + ' ' + (sM[r.size] || r.size || '')) + '</strong>' +
+              '<strong>' + esc(jdLabel(r.product) + ' ' + jdLabel(r.color) + ' ' + jdLabel(r.size)) + '</strong>' +
               '<code style="font-size:11px;color:var(--text-3)">' + esc(r.token) + '</code>' +
             '</div>' +
             '<div class="jd-dup-why" style="word-break:break-all">' +
