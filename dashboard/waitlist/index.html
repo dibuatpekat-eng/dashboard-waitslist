@@ -703,6 +703,7 @@
         <button class="jd-tab" id="jd-tab-btn-tokens" onclick="switchTab('tokens')">Token Aktif</button>
         <button class="jd-tab" id="jd-tab-btn-member" onclick="switchTab('member')">Member</button>
         <button class="jd-tab" id="jd-tab-btn-riwayat" onclick="switchTab('riwayat')">Riwayat</button>
+        <button class="jd-tab" id="jd-tab-btn-dm" onclick="switchTab('dm')">Link DM</button>
         <button class="jd-tab" id="jd-tab-btn-arsip" onclick="switchTab('arsip')">Arsip</button>
         <a class="jd-tab" href="https://dashboard-jastip.vercel.app" target="_blank" rel="noopener" title="Buka Dashboard Jastip di tab baru untuk cek manual" style="text-decoration:none">Dashboard Jastip&nbsp;↗</a>
       </div>
@@ -907,6 +908,56 @@
         </div>
       </div>
 
+      <!-- LINK DM -->
+      <div class="jd-tab-panel" id="jd-tab-panel-dm">
+        <div class="jd-section">
+          <div class="jd-section-header">
+            <span class="jd-section-title">Link DM <span style="font-weight:400;font-size:11px;color:var(--text-3)">— link sekali pakai untuk dibagikan lewat DM. Tanpa waitlist, tanpa email.</span></span>
+            <div class="jd-controls">
+              <select id="jd-dm-filter" onchange="jdSetDmFilter(this.value)" title="Filter status">
+                <option value="">Semua Status</option>
+                <option value="aktif">Aktif (belum dipakai)</option>
+                <option value="dipakai">Sudah dipakai</option>
+                <option value="expired">Expired</option>
+              </select>
+              <button class="jd-btn jd-btn-dark" onclick="jdToggleDmForm()">+ Buat Link</button>
+            </div>
+          </div>
+
+          <div id="jd-dm-form" style="display:none;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-2,#F7F5F2)">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label class="jd-field-label" style="display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-bottom:5px">Produk &amp; Varian</label>
+                <select id="jd-dm-varian" style="font-family:'Jost',sans-serif;font-size:12px;padding:7px 10px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);min-width:230px"></select>
+              </div>
+              <div>
+                <label class="jd-field-label" style="display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-bottom:5px">Jumlah link</label>
+                <input type="number" id="jd-dm-jumlah" value="1" min="1" max="50" style="font-family:'Jost',sans-serif;font-size:12px;padding:7px 10px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text);width:90px">
+              </div>
+              <div>
+                <label class="jd-field-label" style="display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-bottom:5px">Berlaku</label>
+                <select id="jd-dm-jam" style="font-family:'Jost',sans-serif;font-size:12px;padding:7px 10px;border:1px solid var(--border-strong);background:var(--bg);color:var(--text)">
+                  <option value="1">1 jam</option>
+                  <option value="3">3 jam</option>
+                  <option value="6" selected>6 jam</option>
+                  <option value="24">24 jam</option>
+                  <option value="48">48 jam</option>
+                </select>
+              </div>
+              <button class="jd-btn jd-btn-dark" onclick="jdDmBuat()">Buat</button>
+              <button class="jd-btn jd-btn-outline" onclick="jdToggleDmForm()">Batal</button>
+            </div>
+            <div style="margin-top:10px;font-size:11.5px;color:var(--text-3);line-height:1.6">
+              Tiap link cuma bisa dipakai <strong>sekali</strong> — mati sendiri setelah ordernya dibayar.
+              Karena tanpa kunci, siapa pun yang buka duluan yang dapat, jadi pilih masa berlaku sependek yang masuk akal.
+            </div>
+          </div>
+
+          <div style="padding:12px 20px;font-size:11.5px;line-height:1.6;color:var(--text-2);border-bottom:1px solid var(--border)" id="jd-dm-summary">—</div>
+          <div id="jd-dm-body"><div class="jd-loading">Memuat...</div></div>
+        </div>
+      </div>
+
       <!-- ARSIP -->
       <div class="jd-tab-panel" id="jd-tab-panel-arsip">
         <div class="jd-section">
@@ -946,6 +997,10 @@
                 <optgroup label="Peninjauan">
                   <option value="tandai_aman">Tandai aman</option>
                   <option value="edit_entry">Edit entry</option>
+                </optgroup>
+                <optgroup label="Link DM">
+                  <option value="dm_buat_link">Buat link DM</option>
+                  <option value="dm_blokir_link">Matikan link DM</option>
                 </optgroup>
                 <optgroup label="Arsip">
                   <option value="arsipkan">Arsipkan</option>
@@ -1286,7 +1341,7 @@
     function switchTab(name) {
       // Tab 'jastip' (Database Jastip) sudah dihapus. Yang ada: waitlist,
       // tokens, member, riwayat.
-      ['waitlist', 'tokens', 'member', 'riwayat', 'arsip'].forEach(function(t) {
+      ['waitlist', 'tokens', 'member', 'riwayat', 'arsip', 'dm'].forEach(function(t) {
         var panel = document.getElementById('jd-tab-panel-' + t);
         var btn   = document.getElementById('jd-tab-btn-' + t);
         if (panel) panel.classList.toggle('active', t === name);
@@ -1295,6 +1350,7 @@
       if (name === 'member') loadMembers();
       if (name === 'riwayat') loadRiwayat();
       if (name === 'arsip')   loadArsip();
+      if (name === 'dm')      loadDmLinks();
       // Kartu ringkasan atas (metrik Waitlist) sekarang tampil di SEMUA tab —
       // operator minta tetap keliatan pas di tab Token juga. Klik kartu otomatis
       // pindah ke tab Waitlist + filter (lihat filterByStat).
@@ -3096,6 +3152,158 @@
     }
 
 
+    // ── LINK DM ──────────────────────────────────────────────
+    // Link sekali pakai untuk produk yang dijual lewat DM, tanpa waitlist.
+    // Token disimpan di launch_tokens yang SAMA (sumber='dm'), bukan tabel
+    // terpisah: gate 13980 & payment hook 14010 sudah membaca tabel itu, dan
+    // keduanya bagian yang paling sering rusak saat disentuh. Sudah diuji
+    // langsung di situs live -- token tanpa pemilik lolos gate dan halaman
+    // produknya terbuka.
+    var dmFilter = '';
+    var dmVarian = [];
+
+    function jdSetDmFilter(v) { dmFilter = v || ''; loadDmLinks(); }
+
+    function jdToggleDmForm() {
+      var f = document.getElementById('jd-dm-form');
+      var buka = f.style.display === 'none';
+      f.style.display = buka ? 'block' : 'none';
+      if (buka) jdIsiVarianDm();
+    }
+
+    async function jdIsiVarianDm() {
+      var sel = document.getElementById('jd-dm-varian');
+      if (dmVarian.length) return;
+      var r = await sbQuery('launch_variations?select=product,color,size,private_variation_id,private_product_url&order=product,color,size');
+      dmVarian = (r.data || []).filter(function (v) { return v.private_product_url && v.private_variation_id; });
+      var pM = { rhea: 'Rhea', phi: 'Phi' }, cM = { breen: 'Breen', auburn: 'Auburn' }, sM = { sm: 'S/M', lxl: 'L/XL' };
+      sel.innerHTML = dmVarian.length
+        ? dmVarian.map(function (v, i) {
+            return '<option value="' + i + '">' + esc((pM[v.product] || v.product) + ' · ' + (cM[v.color] || v.color) + ' · ' + (sM[v.size] || v.size)) + '</option>';
+          }).join('')
+        : '<option value="">(belum ada produk private terdaftar)</option>';
+    }
+
+    async function jdDmBuat() {
+      var idx = document.getElementById('jd-dm-varian').value;
+      var v = dmVarian[Number(idx)];
+      if (!v) { showToast('Pilih produk dulu. Kalau kosong, produknya belum didaftarkan.', true); return; }
+
+      var jml = Math.max(1, Math.min(50, parseInt(document.getElementById('jd-dm-jumlah').value, 10) || 1));
+      var jam = parseInt(document.getElementById('jd-dm-jam').value, 10) || 6;
+      if (!confirm('Buat ' + jml + ' link untuk ' + v.product + ' ' + v.color + ' ' + v.size + '?\n\n'
+                 + 'Berlaku ' + jam + ' jam, masing-masing sekali pakai.')) return;
+
+      var exp = new Date(Date.now() + jam * 3600000).toISOString();
+      var rows = [];
+      for (var i = 0; i < jml; i++) {
+        rows.push({
+          token: genToken(), sumber: 'dm',
+          product: v.product, color: v.color, size: v.size,
+          variation_id: v.private_variation_id, expires_at: exp
+        });
+      }
+      try {
+        var res = await fetch(SB_URL + '/rest/v1/launch_tokens', {
+          method: 'POST', headers: authHeaders({ 'Prefer': 'return=minimal' }), body: JSON.stringify(rows)
+        });
+        if (handleAuthExpired(res.status)) return;
+        if (!res.ok) throw new Error('status ' + res.status);
+        jdCatatAksi('dm_buat_link', null, v.product + ' ' + v.color + ' ' + v.size, jml, { jam_berlaku: jam });
+        showToast(jml + ' link dibuat. Salin satu per satu waktu bales DM.');
+        jdToggleDmForm();
+        loadDmLinks();
+      } catch (e) {
+        showToast('Gagal membuat link: ' + e.message, true);
+      }
+    }
+
+    function jdDmSalin(link, btn) {
+      navigator.clipboard.writeText(link).then(function () {
+        var teks = btn.textContent; btn.textContent = 'Tersalin ✓';
+        setTimeout(function () { btn.textContent = teks; }, 1400);
+      }, function () { showToast('Gagal menyalin.', true); });
+    }
+
+    // Catatan MURNI untuk penelusuran operator -- tidak pernah diperiksa saat
+    // checkout. Karena linknya tanpa kunci, ini satu-satunya cara tahu link mana
+    // dikirim ke siapa kalau nanti ada yang bocor.
+    async function jdDmCatatan(id, sekarang) {
+      var v = prompt('Dikirim ke siapa? (buat catatanmu sendiri, mis. @username)\n\n'
+                   + 'Ini TIDAK memeriksa apa pun saat checkout — cuma penanda supaya kamu tahu link mana dikirim ke siapa.',
+                     sekarang || '');
+      if (v === null) return;
+      var ok = await jdPatchDiam('launch_tokens?id=eq.' + id, { catatan: v.trim() || null });
+      if (!ok) { showToast('Gagal menyimpan catatan.', true); return; }
+      loadDmLinks();
+    }
+
+    async function jdDmBlokir(id, token) {
+      if (!confirm('Matikan link ini sekarang?\n\nOrang yang sudah menerimanya tidak bisa lagi memakainya. Tidak bisa dibatalkan.')) return;
+      var ok = await jdPatchDiam('launch_tokens?id=eq.' + id + '&is_used=is.false',
+                                 { expires_at: new Date(Date.now() - 60000).toISOString() });
+      if (!ok) { showToast('Gagal mematikan link.', true); return; }
+      jdCatatAksi('dm_blokir_link', null, token, null, null);
+      showToast('Link dimatikan.');
+      loadDmLinks();
+    }
+
+    async function loadDmLinks() {
+      var el = document.getElementById('jd-dm-body');
+      if (!el) return;
+      el.innerHTML = '<div class="jd-loading">Memuat...</div>';
+
+      var q = 'launch_dm_links?select=*&order=created_at.desc&limit=200';
+      if (dmFilter) q += '&status=eq.' + dmFilter;
+      var res = await sbQuery(q);
+
+      var semua = await sbQuery('launch_dm_links?select=status&limit=1000');
+      var hit = { aktif: 0, dipakai: 0, expired: 0 };
+      (semua.data || []).forEach(function (x) { if (hit[x.status] != null) hit[x.status]++; });
+      var sum = document.getElementById('jd-dm-summary');
+      if (sum) sum.innerHTML = '<strong>' + hit.aktif + '</strong> aktif · <strong>' + hit.dipakai + '</strong> sudah dipakai · '
+        + '<strong>' + hit.expired + '</strong> expired'
+        + ' <span style="color:var(--text-3)">— link mati sendiri setelah ordernya dibayar.</span>';
+
+      if (!res.data.length) {
+        el.innerHTML = '<div class="jd-empty">' + (dmFilter ? 'Tidak ada link dengan status ini.'
+          : 'Belum ada link DM. Klik "+ Buat Link" untuk mulai.') + '</div>';
+        return;
+      }
+
+      var pM = { rhea: 'Rhea', phi: 'Phi' }, cM = { breen: 'Breen', auburn: 'Auburn' }, sM = { sm: 'S/M', lxl: 'L/XL' };
+      var badge = { aktif: 'badge-clean', dipakai: 'badge-bought', expired: 'badge-expired' };
+      el.innerHTML = res.data.map(function (r) {
+        var linkJs = String(r.link || '').replace(/['\\]/g, '\\$&');
+        var catJs  = String(r.catatan || '').replace(/['\\]/g, '\\$&');
+        return '<div class="jd-dup-row" style="padding:10px 20px;align-items:flex-start">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+              '<span class="badge ' + (badge[r.status] || '') + '">' + esc(r.status) + '</span>' +
+              '<strong>' + esc((pM[r.product] || r.product || '') + ' ' + (cM[r.color] || r.color || '') + ' ' + (sM[r.size] || r.size || '')) + '</strong>' +
+              '<code style="font-size:11px;color:var(--text-3)">' + esc(r.token) + '</code>' +
+            '</div>' +
+            '<div class="jd-dup-why" style="word-break:break-all">' +
+              (r.link ? esc(r.link) : '<span style="color:var(--flag)">Produk private belum terdaftar di launch_variations — link tidak bisa dibentuk.</span>') +
+            '</div>' +
+            '<div class="jd-dup-why">' +
+              'dibuat ' + esc(fmtDate(r.created_at)) + ' · ' +
+              (r.is_used ? 'dipakai ' + esc(fmtDate(r.used_at)) + (r.woo_order_id ? ' · order #' + esc(r.woo_order_id) : '')
+                         : 'berlaku sampai ' + esc(fmtDate(r.expires_at))) +
+              ' · <a href="#" onclick="event.preventDefault(); jdDmCatatan(\'' + r.id + '\', \'' + catJs + '\')" style="color:var(--text-2)">' +
+                (r.catatan ? 'ke: <strong>' + esc(r.catatan) + '</strong>' : '+ catat tujuan') + '</a>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0">' +
+            (r.link && r.status === 'aktif'
+              ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="jdDmSalin(\'' + linkJs + '\', this)">Salin link</button>' +
+                '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" onclick="jdDmBlokir(\'' + r.id + '\', \'' + esc(r.token) + '\')">Matikan</button>'
+              : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
     // ── ARSIP ────────────────────────────────────────────────
     // Menyingkirkan pendaftar dari SEMUA daftar tanpa menghapusnya. Penyaringan
     // dilakukan di lapisan view (launch_waitlist_view sudah tidak memuat yang
@@ -3298,6 +3506,9 @@
         case 'blokir_token':
           return 'Memblokir token milik <strong>' + t + '</strong>'
                + (d.sebab ? ' <span style="color:var(--text-3)">(' + esc(d.sebab) + ')</span>' : '');
+        case 'dm_buat_link':    return 'Membuat <strong>' + (n || 0) + ' link DM</strong> untuk ' + t
+                                    + (d.jam_berlaku ? ' <span style="color:var(--text-3)">(berlaku ' + d.jam_berlaku + ' jam)</span>' : '');
+        case 'dm_blokir_link':  return 'Mematikan link DM <strong>' + t + '</strong>';
         case 'arsipkan':        return 'Mengarsipkan <strong>' + t + '</strong>';
         case 'arsipkan_massal': return 'Mengarsipkan <strong>' + (n || 0) + ' pendaftar</strong>';
         case 'pulihkan_arsip':  return 'Mengembalikan <strong>' + t + '</strong> dari arsip';
@@ -3315,7 +3526,8 @@
 
     function jdRiwayatKelas(aksi) {
       if (aksi === 'blokir_token' || aksi === 'alokasi_hapus_batch' || aksi === 'alokasi_hapus_baris'
-       || aksi === 'arsipkan' || aksi === 'arsipkan_massal') return 'jd-riw-bahaya';
+       || aksi === 'arsipkan' || aksi === 'arsipkan_massal'
+       || aksi === 'dm_blokir_link') return 'jd-riw-bahaya';
       if (aksi === 'tandai_aman' || aksi === 'edit_entry') return 'jd-riw-tinjau';
       return 'jd-riw-undangan';
     }
