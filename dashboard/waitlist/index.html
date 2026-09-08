@@ -334,6 +334,9 @@
     .jd-riw-undangan .jd-riw-garis { background: #6FBFB5; }
     .jd-riw-tinjau   .jd-riw-garis { background: #E3B57F; }
     .jd-riw-bahaya   .jd-riw-garis { background: #E0A6A0; }
+    /* Pernah beli varian yang SAMA PERSIS -- dibedakan dari biru biasa, karena
+       inilah satu-satunya bentuk "pernah beli" yang hampir selalu berarti tidak. */
+    .jd-beli-chip.jd-beli-sama { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
     .jd-beli-chip { display: inline-flex; align-items: center; height: 23px; padding: 0 8px;
       font-size: 10px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap;
       color: var(--bought); background: var(--bought-bg); border: 1px solid var(--bought-border);
@@ -741,11 +744,17 @@
                 <option value="tier2">Maison</option>
                 <option value="tier3">Prive</option>
               </optgroup>
+              <optgroup label="Sudah pernah dapat Rhea/Phi">
+                <option value="beli">Semua yang pernah dapat</option>
+                <option value="beli3">— varian SAMA PERSIS</option>
+                <option value="beli2">— produk sama, varian beda</option>
+                <option value="beli1">— produk lain (paling aman)</option>
+              </optgroup>
               <optgroup label="Lainnya">
                 <option value="baru">Bukan member (belum pernah beli)</option>
-                <option value="beli">Sudah pernah dapat Rhea/Phi</option>
                 <option value="jastip">Bertanda jastip</option>
                 <option value="ganda">Daftar lebih dari sekali (orang sama)</option>
+                <option value="saudara">Pendaftaran lain sudah diproses</option>
               </optgroup>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
@@ -777,6 +786,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <button class="jd-btn" style="background:transparent;color:#F7F6F4;border:1px solid rgba(255,255,255,0.3);font-size:11px;" onclick="clearSelection()">Batal</button>
+            <button class="jd-btn" id="jd-btn-tandai-aman" style="display:none;background:transparent;color:#F7F6F4;border:1px solid rgba(255,255,255,0.3);font-size:11px;" onclick="jdTandaiAmanTerpilih()" title="Tandai aman semua yang perlu ditinjau di seleksi ini">Tandai Aman</button>
             <button class="jd-btn" style="background:transparent;color:#F0B8B2;border:1px solid rgba(240,184,178,0.45);font-size:11px;" onclick="jdArsipkanTerpilih()" title="Sembunyikan yang dipilih dari semua daftar">Arsipkan</button>
             <button class="jd-btn" style="background:#F7F6F4;color:var(--text);font-size:11px;" onclick="generateSelected()">Generate & Kirim Token</button>
           </div>
@@ -996,6 +1006,7 @@
                 </optgroup>
                 <optgroup label="Peninjauan">
                   <option value="tandai_aman">Tandai aman</option>
+                  <option value="tandai_aman_massal">Tandai aman (banyak)</option>
                   <option value="edit_entry">Edit entry</option>
                 </optgroup>
                 <optgroup label="Link DM">
@@ -1667,7 +1678,16 @@
       var bar  = document.getElementById('jd-action-bar');
       if (keys.length > 0) {
         bar.style.display = 'flex';
-        document.getElementById('jd-action-count').textContent = keys.length + ' dipilih (halaman ini)';
+        var perluTinjau = keys.filter(function (k) { return selectedRows[k].needs_review; }).length;
+        var siapKirim   = keys.length - perluTinjau;
+        document.getElementById('jd-action-count').textContent =
+          keys.length + ' dipilih (halaman ini)'
+          + (perluTinjau ? ' \u2014 ' + siapKirim + ' siap kirim, ' + perluTinjau + ' perlu ditinjau' : '');
+        var btnAman = document.getElementById('jd-btn-tandai-aman');
+        if (btnAman) {
+          btnAman.style.display = perluTinjau ? '' : 'none';
+          btnAman.textContent = 'Tandai Aman (' + perluTinjau + ')';
+        }
       } else {
         bar.style.display = 'none';
       }
@@ -1680,10 +1700,10 @@
       // Hanya baris ELIGIBLE yang dihitung. Versi lama ikut menghitung checkbox
       // yang disabled, jadi kotak "pilih semua" tidak pernah tercentang penuh di
       // halaman yang punya baris perlu-ditinjau -- terlihat seperti gagal.
-      var elig = Array.from(document.querySelectorAll('.jd-row-check'))
-                      .filter(function (c) { return c.dataset.eligible === '1'; });
+      var bisa = Array.from(document.querySelectorAll('.jd-row-check'))
+                      .filter(function (c) { return !c.disabled; });
       document.getElementById('jd-check-all').checked =
-        elig.length > 0 && elig.every(function (c) { return c.checked; });
+        bisa.length > 0 && bisa.every(function (c) { return c.checked; });
     }
 
     // CAKUPAN: hanya baris yang sedang tampil di HALAMAN INI. Seleksi juga
@@ -1718,6 +1738,25 @@
       document.querySelectorAll('.jd-row-check').forEach(function(c) { c.checked = false; });
       document.getElementById('jd-check-all').checked = false;
       updateActionBar();
+    }
+
+    // Kalimat "pernah beli" yang menyebut VARIAN dan KANAL.
+    // Sebelumnya hanya "Pernah beli: Rhea Flare Jacket" -- dan justru varian yang
+    // menentukan keputusan: beli Rhea Breen lalu mendaftar Rhea Auburn itu wajar,
+    // beli Rhea Breen S/M lalu mendaftar Rhea Breen S/M lagi tidak.
+    var KANAL_LABEL = { web: 'web', store: 'toko', pos: 'toko', po: 'PO', reservation: 'reservasi', moka: 'Moka' };
+    function jdBeliKalimat(row) {
+      var tk = row.beli_tingkat;
+      var varian = [row.beli_warna, row.beli_size].filter(Boolean).map(jdLabel).join(' ');
+      var kepala = tk === 3 ? 'Sudah pernah dapat <strong>varian yang sama persis</strong>'
+                 : tk === 2 ? 'Pernah beli produk yang sama, <strong>varian berbeda</strong>'
+                 : tk === 1 ? 'Pernah beli <strong>produk lain</strong>'
+                 : 'Pernah beli';
+      return kepala + ': ' + esc(row.purchased_product_name || '\u2014')
+        + (varian ? ' ' + esc(varian) : '')
+        + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : '')
+        + (row.beli_produk_waitlist_jml > 1 ? ' \u00b7 ' + row.beli_produk_waitlist_jml + '\u00d7 order' : '')
+        + (row.purchased_order_date ? ' \u00b7 ' + fmtDate(row.purchased_order_date) : '');
     }
 
     // ── WAITLIST ─────────────────────────────────────────────
@@ -1803,6 +1842,12 @@
       // reservasi/pre-order tanpa pernah bertransaksi.
       else if (custFilter === 'baru')   q += '&is_loyal=is.false';
       else if (custFilter === 'beli')   q += '&already_purchased=is.true';
+      // Tiga tingkat kecocokan -- inilah yang memungkinkan "tandai aman" massal
+      // dikerjakan per kelompok, bukan satu per satu untuk 237 baris.
+      else if (custFilter === 'beli3')  q += '&beli_tingkat=eq.3';
+      else if (custFilter === 'beli2')  q += '&beli_tingkat=eq.2';
+      else if (custFilter === 'beli1')  q += '&beli_tingkat=eq.1';
+      else if (custFilter === 'saudara') q += '&orang_sudah_diproses=is.true';
       else if (custFilter === 'ganda')  q += '&orang_jml_baris=gt.1';
       // Satu kolom boolean, bukan `or=(...)`: pencarian nomor HP juga memakai
       // `or=`, dan dua `or` dalam satu URL memberi hasil yang tidak bisa
@@ -1880,12 +1925,23 @@
               // bisa ditetapkan lewat keputusan manusia. Sebut siapa orangnya
               // supaya operator tahu ini sudah pernah diputuskan, bukan sinyal mentah.
               statusCaption = '<span class="jd-flag-detail">Jastip \u2014 sudah dipastikan di Customer Database</span>';
+            } else if (row.orang_sudah_diproses && !row.already_purchased) {
+              // Saudara-baris sudah dikirimi undangan. Ini bukan soal pernah beli,
+              // melainkan soal orang yang sama nyaris dapat slot kedua.
+              rowAccentClass = 'jd-row-jastip';
+              statusBadge = '<span class="badge badge-flag">Perlu Ditinjau</span>';
+              statusCaption = '<span class="jd-flag-detail">Pendaftaran lain milik orang ini '
+                + (row.orang_sudah_beli ? 'sudah <strong>dipakai beli</strong>' : 'sudah dikirimi undangan')
+                + ' \u2014 kirim lagi berarti dia dapat slot kedua. '
+                + '<a href="#" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\'); return false;" style="color:var(--text-2);text-decoration:underline">lihat semua pendaftarannya</a></span>';
             } else {
-              rowAccentClass = 'jd-row-bought';
-              statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
-              statusCaption = '<span class="jd-flag-detail">Pernah beli: ' + esc(row.purchased_product_name || '\u2014')
-                + (row.beli_produk_waitlist_jml > 1 ? ' (' + row.beli_produk_waitlist_jml + '\u00d7)' : '')
-                + (row.purchased_order_date ? ' \u00b7 ' + fmtDate(row.purchased_order_date) : '') + '</span>';
+              // Tiga tingkat, tiga bobot yang berbeda.
+              var tk = row.beli_tingkat || 2;
+              rowAccentClass = tk === 3 ? 'jd-row-jastip' : 'jd-row-bought';
+              statusBadge = '<span class="badge ' + (tk === 3 ? 'badge-flag' : 'badge-bought') + '">Perlu Ditinjau</span>';
+              statusCaption = '<span class="jd-flag-detail">' + jdBeliKalimat(row)
+                + (row.orang_sudah_diproses ? ' \u00b7 <strong>pendaftaran lain orang ini juga sudah diproses</strong>' : '')
+                + '</span>';
             }
           } else if (row.effective_status === 'expired') {
             // Pernah diundang tapi expired (ga checkout). Tetap bisa dikirim ulang,
@@ -1971,13 +2027,22 @@
         // barisnya juga jastip (keterangan dipakai jastip), sudah ditandai aman,
         // atau sudah diproses. Tanpa pembatas ini, hal yang sama tertulis tiga
         // kali di satu baris.
-        var keteranganSudahSebutBeli = isActionable && needsReview && !row.cust_jastip_pasti;
+        var keteranganSudahSebutBeli = isActionable && needsReview && !row.cust_jastip_pasti && !row.orang_sudah_diproses;
+        var TK_LABEL = { 3: 'Sama persis', 2: 'Varian beda', 1: 'Produk lain' };
         var beliChip = (row.already_purchased && !keteranganSudahSebutBeli)
-          ? '<span class="jd-beli-chip" title="Sudah pernah dapat produk waitlist: '
-            + esc(row.purchased_product_name || '\u2014')
-            + (row.beli_produk_waitlist_jml > 1 ? ' (' + row.beli_produk_waitlist_jml + ' order)' : '')
-            + (row.purchased_order_date ? ' \u00b7 ' + esc(fmtDate(row.purchased_order_date)) : '')
-            + '. Di luar undangan dari waitlist ini.">Pernah beli</span>'
+          ? '<span class="jd-beli-chip' + (row.beli_tingkat === 3 ? ' jd-beli-sama' : '')
+            + '" title="' + esc(jdBeliKalimat(row).replace(/<[^>]+>/g, ''))
+            + '. Di luar undangan dari waitlist ini.">Pernah beli'
+            + (TK_LABEL[row.beli_tingkat] ? ' \u00b7 ' + TK_LABEL[row.beli_tingkat] : '') + '</span>'
+          : '';
+
+        // Saudara-baris sudah diproses -- selalu terlihat, termasuk pada baris yang
+        // sudah lewat, karena inilah yang paling perlu ditelusuri kalau ternyata
+        // satu orang dapat dua slot.
+        var saudaraChip = row.orang_sudah_diproses
+          ? '<span class="jd-risk-chip jd-risk-pasti" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\')" title="Pendaftaran lain milik orang ini sudah '
+            + (row.orang_sudah_beli ? 'dipakai membeli' : 'dikirimi undangan') + '. Klik untuk lihat semuanya.">'
+            + (row.orang_sudah_beli ? 'Sudah dapat' : 'Sudah diundang') + '</span>'
           : '';
 
         if (!isActionable && row.cust_jastip_pasti) {
@@ -2004,10 +2069,10 @@
               : 'Terindikasi orang yang sama dengan ' + row.dup_count + ' entry lain. Klik untuk lihat.') +
             '">Duplikat' + (row.dup_count > 1 ? ' ' + row.dup_count : '') + '</span>'
           : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + beliChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + beliChip + saudaraChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
-          '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (eligible === '0' ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"') + ' style="cursor:' + (eligible === '0' ? 'not-allowed' : 'pointer') + '"></td>' +
+          '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (!isActionable ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"' + (eligible === '0' ? ' title="' + disabledReason + ' — bisa dicentang untuk ditandai aman sekaligus"' : '')) + ' style="cursor:' + (!isActionable ? 'not-allowed' : 'pointer') + '"></td>' +
           '<td data-label="No." style="color:var(--text-3)">' + (from + i + 1) + '</td>' +
           '<td data-label="Email">' + esc(row.email || '—') +
           ' <button class="jd-btn jd-btn-outline" style="font-size:9px;padding:2px 6px;margin-left:6px" onclick="event.stopPropagation(); openEditModal(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\', \'' + (row.phone || '').replace(/['\\\\]/g, "\\$&") + '\')">Edit</button>' +
@@ -2029,6 +2094,20 @@
     // Aksi cepat per-baris -- pakai ulang alur bulk-generate yang sudah ada
     // (modal konfirmasi, lookup variation, dst), cuma isinya 1 orang doang,
     // biar operator gak perlu scroll ke atas buat generate satu token aja.
+    // Dari modal "orang sama": pilih SATU pendaftaran untuk dikirimi undangan.
+    // Modal ditutup dulu supaya modal konfirmasi generate tidak tertimbun di
+    // belakangnya -- dua modal bertumpuk membuat operator tidak tahu mana yang
+    // sedang dijawabnya.
+    function jdKirimDariModal(btn) {
+      var row = JSON.parse(btn.dataset.row);
+      if (row.needs_review) {
+        showToast('Baris ini masih perlu ditinjau. Tandai aman dulu di daftar utama.', true);
+        return;
+      }
+      closeModal('jd-modal-dup');
+      generateSelected([row]);
+    }
+
     function jdGenerateSingle(btn) {
       var row = JSON.parse(btn.dataset.row);
       // Lewatin baris ini langsung sebagai argumen -- JANGAN timpa selectedRows
@@ -2190,9 +2269,21 @@
     async function generateSelected(explicitRows) {
       // explicitRows dipakai buat generate 1 baris (jdGenerateSingle) tanpa
       // ganggu seleksi bulk; kalau kosong, pakai seleksi checkbox biasa.
-      var rows  = explicitRows || Object.values(selectedRows);
+      var semua = explicitRows || Object.values(selectedRows);
+      var rows  = semua.filter(function (r) { return !r.needs_review; });
+      var dilewati = semua.length - rows.length;
       var hours = 24; // default; bisa diganti di modal konfirmasi
-      if (!rows.length) return;
+      if (!semua.length) return;
+      if (!rows.length) {
+        showToast('Semua yang dipilih masih perlu ditinjau. Tandai aman dulu, atau pakai tombol "Tandai Aman".', true);
+        return;
+      }
+      if (dilewati) {
+        // Dilewati diam-diam sama buruknya dengan terkirim: operator akan
+        // mengira semuanya sudah dikirim.
+        if (!confirm(dilewati + ' dari ' + semua.length + ' baris yang dipilih masih PERLU DITINJAU dan tidak akan dikirimi undangan.\n\n'
+                   + 'Lanjut kirim untuk ' + rows.length + ' baris sisanya?')) return;
+      }
 
       lastBatchHours = hours;
       var expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
@@ -2926,8 +3017,7 @@
       list.innerHTML = '<div class="jd-loading">Memuat...</div>';
       try {
         var r = await sbQuery('launch_waitlist_view?orang_id=eq.' + encodeURIComponent(orangId) +
-          '&select=id,email,phone,product,color,size,registered_at,effective_status,cust_risk,tier_nama' +
-          '&order=registered_at.asc&limit=50');
+          '&select=*&order=registered_at.asc&limit=50');
         var rows = r.data || [];
         if (!rows.length) { list.innerHTML = '<div class="jd-empty">Tidak ada data.</div>'; return; }
         var sudah = rows.filter(function (d) {
@@ -2941,15 +3031,29 @@
               + 'Orang ini sudah dapat ' + sudah + ' slot. Mengalokasikan lagi berarti dia dapat lebih dari satu.</div>'
             : '');
         list.innerHTML = rows.map(function (d) {
+          var bisaKirim = d.effective_status === 'pending' || d.effective_status === 'expired';
+          var rowJson = esc(JSON.stringify(d));
           return '<div class="jd-dup-row">' +
             '<div style="flex:1;min-width:0">' +
-              '<div style="word-break:break-all">' + esc(d.email || '\u2014') + '</div>' +
-              '<div class="jd-dup-why">' + esc(fmtPhone(d.phone)) + ' \u00b7 ' +
-                esc([d.product, d.color, d.size].filter(Boolean).join(' ')) +
-                ' \u00b7 daftar ' + fmtDate(d.registered_at) + '</div>' +
+              '<div style="word-break:break-all">' + esc(d.email || '\u2014') +
+                ' <strong style="color:var(--text)">' +
+                  esc([jdLabel(d.product), jdLabel(d.color), jdLabel(d.size)].filter(Boolean).join(' ')) +
+                '</strong></div>' +
+              '<div class="jd-dup-why">' + esc(fmtPhone(d.phone)) +
+                ' \u00b7 daftar ' + fmtDate(d.registered_at) +
+                (d.already_purchased ? ' \u00b7 ' + jdBeliKalimat(d).replace(/<[^>]+>/g, '') : '') +
+              '</div>' +
             '</div>' +
-            '<span class="badge badge-' + (d.effective_status || 'pending') + '">' +
-              (STATUS_LABELS[d.effective_status] || d.effective_status || '\u2014') + '</span>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+              '<span class="badge badge-' + (d.effective_status || 'pending') + '">' +
+                (STATUS_LABELS[d.effective_status] || d.effective_status || '\u2014') + '</span>' +
+              (bisaKirim
+                ? '<button class="jd-btn jd-btn-outline" style="font-size:10px;padding:3px 8px" ' +
+                  'data-row="' + rowJson + '" onclick="jdKirimDariModal(this)"' +
+                  (d.needs_review ? ' title="Baris ini masih perlu ditinjau — tandai aman dulu"' : '') + '>' +
+                  (d.needs_review ? 'Perlu ditinjau' : 'Kirim yang ini') + '</button>'
+                : '') +
+            '</div>' +
           '</div>';
         }).join('');
       } catch (e) {
@@ -3379,6 +3483,41 @@
       loadStats();
     }
 
+    // Tandai aman massal. Dipakai bersama filter tingkat kecocokan: saring ke
+    // "produk lain (paling aman)", pilih semua, tandai aman sekali jalan --
+    // 119 baris yang sebelumnya harus diklik satu per satu.
+    async function jdTandaiAmanTerpilih() {
+      var rows = Object.values(selectedRows).filter(function (r) { return r.needs_review; });
+      if (!rows.length) return;
+
+      // Pecah per sebab, supaya operator tahu APA yang sedang dilepaskan.
+      var n3 = rows.filter(function (r) { return r.beli_tingkat === 3; }).length;
+      var nJastip = rows.filter(function (r) { return r.cust_jastip_pasti; }).length;
+      var nSaudara = rows.filter(function (r) { return r.orang_sudah_diproses; }).length;
+
+      var peringatan = '';
+      if (nJastip)  peringatan += '\n\u26a0 ' + nJastip + ' di antaranya bertanda JASTIP (sudah dipastikan di Customer Database).';
+      if (n3)       peringatan += '\n\u26a0 ' + n3 + ' sudah pernah dapat varian yang SAMA PERSIS.';
+      if (nSaudara) peringatan += '\n\u26a0 ' + nSaudara + ' pendaftaran lain milik orang yang sama sudah diproses.';
+
+      if (!confirm('Tandai aman ' + rows.length + ' baris?\n\n'
+                 + 'Setelah ini mereka jadi Eligible dan bisa ikut dikirimi undangan.'
+                 + peringatan
+                 + (peringatan ? '\n\nYakin?' : ''))) return;
+
+      var ids = rows.map(function (r) { return r.id; });
+      var ok = await jdPatchDiam('launch_waitlist?id=in.(' + ids.join(',') + ')',
+        { review_cleared: true, review_cleared_at: new Date().toISOString() });
+      if (!ok) { showToast('Gagal menandai aman.', true); return; }
+
+      jdCatatAksi('tandai_aman_massal', null, null, ids.length,
+                  { sama_persis: n3, jastip: nJastip, saudara_sudah_diproses: nSaudara });
+      showToast(ids.length + ' baris ditandai aman.');
+      clearSelection();
+      loadWaitlist(currentPage);
+      loadStats();
+    }
+
     async function jdArsipkanTerpilih() {
       var rows = Object.values(selectedRows);
       if (!rows.length) return;
@@ -3524,6 +3663,9 @@
         case 'arsipkan_massal': return 'Mengarsipkan <strong>' + (n || 0) + ' pendaftar</strong>';
         case 'pulihkan_arsip':  return 'Mengembalikan <strong>' + t + '</strong> dari arsip';
         case 'tandai_aman':    return 'Menandai <strong>' + t + '</strong> aman';
+        case 'tandai_aman_massal':
+          return 'Menandai aman <strong>' + (n || 0) + ' baris</strong> sekaligus'
+               + (d.sama_persis ? ' <span style="color:var(--flag)">(' + d.sama_persis + ' varian sama persis)</span>' : '');
         case 'edit_entry':     return 'Mengubah data <strong>' + t + '</strong>';
         case 'alokasi_simpan_batch':
           return 'Menyimpan alokasi batch <strong>' + t + '</strong>'
