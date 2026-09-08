@@ -291,6 +291,8 @@
     .jd-dup-chip:hover { background: #F7E3CB; border-color: #D19A55; }
     /* Kembarannya sudah dapat slot -> lebih tegas, ini yang paling perlu dilihat operator. */
     .jd-dup-chip.jd-dup-hot { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
+    .jd-dup-chip.jd-dup-terkirim { color: #8C1D18; background: #FBE9E7; border-color: #E0A6A0; }
+    .jd-dup-chip.jd-dup-terkirim:hover { background: #F6D8D4; border-color: #CE8079; }
     .jd-dup-chip.jd-dup-hot:hover { background: #F6D8D4; border-color: #CE8079; }
     /* Tier -- satu keluarga warna (teal) dengan pekat yang naik seiring tingkat,
        supaya urutannya kebaca sekilas tanpa harus mengingat nama tier. */
@@ -753,27 +755,11 @@
             </select>
             <select id="jd-filter-vonis" onchange="jdApplyVonisFilter(this.value)" title="Boleh dikirim atau tidak — digabung dengan filter Pelanggan">
               <option value="">Semua Kelayakan</option>
-              <optgroup label="Lulus — aman dikirim bulk">
-                <option value="lulus">Semua yang lulus</option>
-                <option value="r:bersih">— bersih, tanpa catatan</option>
-                <option value="lulus_catatan">— lulus tapi ada catatan</option>
-                <option value="r:pernah beli produk lain">&nbsp;&nbsp;&nbsp;· pernah beli produk lain</option>
-                <option value="r:punya banyak email/HP">&nbsp;&nbsp;&nbsp;· punya banyak email/HP</option>
-                <option value="r:daftar lebih dari sekali">&nbsp;&nbsp;&nbsp;· daftar lebih dari sekali</option>
-                <option value="r:mungkin orang yang sama (kembar)">&nbsp;&nbsp;&nbsp;· mungkin orang yang sama (kembar)</option>
-                <option value="r:sudah ditandai aman">&nbsp;&nbsp;&nbsp;· sudah ditandai aman</option>
-              </optgroup>
-              <optgroup label="Cek dulu — boleh dikirim, tapi dilihat">
-                <option value="tinjau">Semua yang perlu dicek</option>
-                <option value="r:sudah punya produk ini, warna/size lain">— sudah punya produk ini, warna/size lain</option>
-                <option value="r:kartunya pakai nama orang lain">— kartunya pakai nama orang lain</option>
-                <option value="r:sudah 2x+ beli produk launch">— sudah 2x+ beli produk launch</option>
-              </optgroup>
-              <optgroup label="Dikunci — tidak bisa dikirim">
-                <option value="kunci">Semua yang dikunci</option>
-                <option value="r:sudah punya varian ini">— sudah punya varian ini</option>
-                <option value="r:jastip">— jastip</option>
-              </optgroup>
+              <option value="r:bersih">Bersih — tinggal kirim</option>
+              <option value="lulus">Lulus (semua)</option>
+              <option value="lulus_catatan">Lulus tapi ada catatan</option>
+              <option value="tinjau">Perlu ditinjau</option>
+              <option value="kunci">Dikunci</option>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
               <option value="">Semua Variasi</option>
@@ -1787,9 +1773,7 @@
                  : 'Pernah beli';
       return kepala + ': ' + esc(row.purchased_product_name || '\u2014')
         + (varian ? ' ' + esc(varian) : '')
-        + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : '')
-        + (row.beli_produk_waitlist_jml > 1 ? ' \u00b7 ' + row.beli_produk_waitlist_jml + '\u00d7 order' : '')
-        + (row.purchased_order_date ? ' \u00b7 ' + fmtDate(row.purchased_order_date) : '');
+        + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : '');
     }
 
     // ── WAITLIST ─────────────────────────────────────────────
@@ -1976,7 +1960,7 @@
               + lihatSemua + '</span>';
           } else if (row.vonis === 'tinjau') {
             rowAccentClass = 'jd-row-bought';
-            statusBadge = '<span class="badge badge-bought">Cek Dulu</span>';
+            statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
             statusCaption = '<span class="jd-flag-detail">' + alasanTeks
               + (detailBeli ? ' \u2014 ' + detailBeli : '')
               + lihatSemua + '</span>';
@@ -2078,15 +2062,6 @@
             + (TK_LABEL[row.beli_tingkat] ? ' \u00b7 ' + TK_LABEL[row.beli_tingkat] : '') + '</span>'
           : '';
 
-        // Saudara-baris sudah diproses -- selalu terlihat, termasuk pada baris yang
-        // sudah lewat, karena inilah yang paling perlu ditelusuri kalau ternyata
-        // satu orang dapat dua slot.
-        var saudaraChip = row.orang_sudah_diproses
-          ? '<span class="jd-risk-chip jd-risk-pasti" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\')" title="Pendaftaran lain milik orang ini sudah '
-            + (row.orang_sudah_beli ? 'dipakai membeli' : 'dikirimi undangan') + '. Klik untuk lihat semuanya.">'
-            + (row.orang_sudah_beli ? 'Sudah dapat' : 'Sudah diundang') + '</span>'
-          : '';
-
         if (!isActionable && row.cust_jastip_pasti) {
           riskChip = '<span class="jd-risk-chip jd-risk-pasti" title="' + esc(row.cust_nama || '')
             + ' \u2014 jastip yang sudah dipastikan di Customer Database, tapi undangan/pembelian ini sudah terlanjur terjadi.">Jastip</span>' + riskChip;
@@ -2098,20 +2073,34 @@
         // pada identitas yang sudah tertaut: kasus nyata di data ini seorang
         // mitra jastip resmi mendaftar lewat 4 email + 4 nomor berbeda, yang
         // tanpa penautan identitas terlihat seperti 4 orang berbeda.
-        var samaChip = (row.orang_jml_baris > 1)
-          ? '<span class="jd-dup-chip jd-dup-orang" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' + esc(row.cust_nama || 'Orang ini') + ' mendaftar ' + row.orang_jml_baris + '\u00d7 dengan kontak berbeda. Klik untuk lihat semuanya.">' + row.orang_jml_baris + '\u00d7 daftar</span>'
-          : '';
-        // Chip kemiripan lama cuma dipakai kalau orangnya BELUM ketemu di
-        // Customer Database -- kalau sudah ketemu, samaChip lebih dapat dipercaya
-        // dan menampilkan keduanya cuma menggandakan peringatan yang sama.
-        var dupChip = (!row.sudah_pelanggan && row.dup_count > 0 && row.dup_bobot >= 70)
-          ? '<span class="jd-dup-chip' + (row.dup_claimed ? ' jd-dup-hot' : '') + '" onclick="event.stopPropagation(); jdOpenDup(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' +
-            (row.dup_claimed
-              ? 'Kembarannya SUDAH dapat undangan / sudah beli. Klik untuk lihat.'
-              : 'Terindikasi orang yang sama dengan ' + row.dup_count + ' entry lain. Klik untuk lihat.') +
-            '">Duplikat' + (row.dup_count > 1 ? ' ' + row.dup_count : '') + '</span>'
-          : '';
-        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + beliChip + saudaraChip + riskChip + samaChip + dupChip + actionBtn + markHtml + '</div>' + statusCaption;
+        // SATU chip untuk "orang yang sama mendaftar lebih dari sekali".
+        // Dulu ada DUA chip untuk hal yang sama, dari dua sumber berbeda:
+        // "N× daftar" (dipastikan lewat Customer Database) dan "Duplikat"
+        // (dugaan dari kemiripan email/HP, untuk yang belum tersambung).
+        // Dari layar keduanya tampak seperti dua masalah berbeda, padahal
+        // pertanyaannya satu: apakah orang ini bisa dapat dua slot?
+        //
+        // Dan yang paling dibutuhkan justru tidak pernah ditulis: kembarannya
+        // SUDAH dikirim atau belum. Datanya sebenarnya sudah ada
+        // (orang_sudah_diproses / dup_claimed), hanya tidak pernah ditampilkan.
+        var kembarPasti  = row.orang_jml_baris > 1;
+        var kembarDuga   = !row.sudah_pelanggan && row.dup_count > 0 && row.dup_bobot >= 70;
+        var kembarJml    = kembarPasti ? row.orang_jml_baris : (row.dup_count + 1);
+        var kembarKirim  = row.orang_sudah_diproses || row.dup_claimed;
+        var kembarChip = '';
+        if (kembarPasti || kembarDuga) {
+          var kembarKet = kembarKirim ? 'sudah ada yang dikirim' : 'belum ada yang dikirim';
+          kembarChip = '<span class="jd-dup-chip ' + (kembarKirim ? 'jd-dup-terkirim' : 'jd-dup-orang') + '"'
+            + (row.orang_id ? ' onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\')"' : '')
+            + ' title="' + (kembarPasti
+                ? 'Dipastikan lewat Customer Database: orang ini punya ' + kembarJml + ' pendaftaran.'
+                : 'Dugaan dari kemiripan email/HP (belum tersambung ke Customer Database).')
+              + ' ' + (kembarKirim ? 'Salah satunya SUDAH dikirimi undangan.' : 'Belum ada satu pun yang dikirimi undangan.')
+              + (row.orang_id ? ' Klik untuk lihat semuanya.' : '') + '">'
+            + kembarJml + '\u00d7 daftar \u00b7 ' + kembarKet + '</span>';
+        }
+
+        var statusHtml = '<div class="jd-flag-cell-top">' + statusBadge + loyalChip + beliChip + riskChip + kembarChip + actionBtn + markHtml + '</div>' + statusCaption;
 
         return '<tr class="' + rowAccentClass + '" style="' + (eligible === '0' ? 'opacity:0.6' : '') + '" onclick="jdToggleCard(event, this)">' +
           '<td data-label="" class="jd-checkbox-cell"><input type="checkbox" class="jd-row-check" onclick="event.stopPropagation()" data-id="' + row.id + '" data-eligible="' + eligible + '" data-row="' + rowJson + '" ' + (!isActionable ? 'disabled title="' + disabledReason + '"' : 'onchange="toggleRow(\'' + row.id + '\', JSON.parse(this.dataset.row), this.checked)"' + (eligible === '0' ? ' title="' + disabledReason + ' — bisa dicentang untuk ditandai aman sekaligus"' : '')) + ' style="cursor:' + (!isActionable ? 'not-allowed' : 'pointer') + '"></td>' +
@@ -2332,7 +2321,7 @@
       if (perluCek.length) {
         var rinci = {};
         perluCek.forEach(function (r) { rinci[r.vonis_alasan] = (rinci[r.vonis_alasan] || 0) + 1; });
-        if (!confirm(perluCek.length + ' dari ' + rows.length + ' baris bertanda "Cek Dulu":\n\n'
+        if (!confirm(perluCek.length + ' dari ' + rows.length + ' baris bertanda "Perlu Ditinjau":\n\n'
                    + Object.keys(rinci).map(function (k) { return '  \u00b7 ' + rinci[k] + ' \u2014 ' + k; }).join('\n')
                    + '\n\nMereka TETAP akan dikirimi undangan. Lanjut?')) return;
       }
