@@ -744,6 +744,13 @@
                 <option value="tier2">Maison</option>
                 <option value="tier3">Prive</option>
               </optgroup>
+              <optgroup label="Kelayakan kirim">
+                <option value="v_lulus">Lulus — aman dikirim bulk</option>
+                <option value="v_bersih">— bersih saja (tanpa catatan apa pun)</option>
+                <option value="v_lulus_catatan">— lulus tapi ada catatan</option>
+                <option value="v_tinjau">Cek dulu</option>
+                <option value="v_kunci">Dikunci</option>
+              </optgroup>
               <optgroup label="Sudah pernah dapat Rhea/Phi">
                 <option value="beli">Semua yang pernah dapat</option>
                 <option value="beli3">— varian SAMA PERSIS</option>
@@ -1841,6 +1848,11 @@
       // "tidak ada di Customer Database": 46 orang dikenal di sana lewat
       // reservasi/pre-order tanpa pernah bertransaksi.
       else if (custFilter === 'baru')   q += '&is_loyal=is.false';
+      else if (custFilter === 'v_lulus')  q += '&vonis=eq.lulus';
+      else if (custFilter === 'v_bersih') q += '&vonis=eq.lulus&vonis_alasan=eq.bersih';
+      else if (custFilter === 'v_lulus_catatan') q += '&vonis=eq.lulus&vonis_alasan=neq.bersih';
+      else if (custFilter === 'v_tinjau') q += '&vonis=eq.tinjau';
+      else if (custFilter === 'v_kunci')  q += '&vonis=eq.kunci';
       else if (custFilter === 'beli')   q += '&already_purchased=is.true';
       // Tiga tingkat kecocokan -- inilah yang memungkinkan "tandai aman" massal
       // dikerjakan per kelompok, bukan satu per satu untuk 237 baris.
@@ -1902,7 +1914,6 @@
         // ditandai aman operator. Begitu operator klik "Tandai Aman", sinyal
         // mentahnya tetap ada tapi needs_review jadi false -> orangnya eligible.
         var needsReview = row.needs_review === true;
-        var wasSignal   = (row.cust_jastip_pasti || row.already_purchased);
         var eligible = (!needsReview && isActionable) ? '1' : '0';
         var rowJson  = JSON.stringify(row).replace(/"/g, '&quot;');
 
@@ -1917,47 +1928,47 @@
         var rowAccentClass = '';
         var statusBadge, statusCaption = '';
         if (isActionable) {
-          if (needsReview) {
-            if (row.cust_jastip_pasti) {
-              rowAccentClass = 'jd-row-jastip';
-              statusBadge = '<span class="badge badge-flag">Perlu Ditinjau</span>';
-              // Ini BUKAN tebakan mesin: status jastip di Customer Database cuma
-              // bisa ditetapkan lewat keputusan manusia. Sebut siapa orangnya
-              // supaya operator tahu ini sudah pernah diputuskan, bukan sinyal mentah.
-              statusCaption = '<span class="jd-flag-detail">Jastip \u2014 sudah dipastikan di Customer Database</span>';
-            } else if (row.orang_sudah_diproses && !row.already_purchased) {
-              // Saudara-baris sudah dikirimi undangan. Ini bukan soal pernah beli,
-              // melainkan soal orang yang sama nyaris dapat slot kedua.
-              rowAccentClass = 'jd-row-jastip';
-              statusBadge = '<span class="badge badge-flag">Perlu Ditinjau</span>';
-              statusCaption = '<span class="jd-flag-detail">Pendaftaran lain milik orang ini '
-                + (row.orang_sudah_beli ? 'sudah <strong>dipakai beli</strong>' : 'sudah dikirimi undangan')
-                + ' \u2014 kirim lagi berarti dia dapat slot kedua. '
-                + '<a href="#" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\'); return false;" style="color:var(--text-2);text-decoration:underline">lihat semua pendaftarannya</a></span>';
-            } else {
-              // Tiga tingkat, tiga bobot yang berbeda.
-              var tk = row.beli_tingkat || 2;
-              rowAccentClass = tk === 3 ? 'jd-row-jastip' : 'jd-row-bought';
-              statusBadge = '<span class="badge ' + (tk === 3 ? 'badge-flag' : 'badge-bought') + '">Perlu Ditinjau</span>';
-              statusCaption = '<span class="jd-flag-detail">' + jdBeliKalimat(row)
-                + (row.orang_sudah_diproses ? ' \u00b7 <strong>pendaftaran lain orang ini juga sudah diproses</strong>' : '')
-                + '</span>';
-            }
+          // Vonis dihitung di database (kolom `vonis`), bukan disusun ulang di
+          // sini. Aturan yang hidup di dua tempat cepat atau lambat menjawab
+          // beda, dan yang beda itu menentukan siapa dapat email.
+          //   kunci  -> tidak bisa dikirim sebelum ditandai aman
+          //   tinjau -> BISA dikirim, tapi diperingatkan saat bulk
+          //   lulus  -> kirim tanpa hambatan
+          var alasanTeks = row.vonis_alasan && row.vonis_alasan !== 'bersih'
+            ? esc(row.vonis_alasan) : '';
+          var detailBeli = row.already_purchased ? jdBeliKalimat(row) : '';
+          var lihatSemua = row.orang_sudah_diproses && row.orang_id
+            ? ' <a href="#" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\'); return false;" style="color:var(--text-2);text-decoration:underline">lihat semua pendaftarannya</a>'
+            : '';
+
+          if (row.vonis === 'kunci') {
+            rowAccentClass = 'jd-row-jastip';
+            statusBadge = '<span class="badge badge-flag">Dikunci</span>';
+            statusCaption = '<span class="jd-flag-detail">' + alasanTeks
+              + (detailBeli && row.vonis_alasan !== 'jastip' ? ' \u2014 ' + detailBeli : '')
+              + lihatSemua + '</span>';
+          } else if (row.vonis === 'tinjau') {
+            rowAccentClass = 'jd-row-bought';
+            statusBadge = '<span class="badge badge-bought">Cek Dulu</span>';
+            statusCaption = '<span class="jd-flag-detail">' + alasanTeks
+              + (detailBeli ? ' \u2014 ' + detailBeli : '')
+              + lihatSemua + '</span>';
           } else if (row.effective_status === 'expired') {
-            // Pernah diundang tapi expired (ga checkout). Tetap bisa dikirim ulang,
-            // tapi dibedain dari "Eligible" (belum pernah diundang) -- badge amber +
-            // garis tepi amber -- biar operator sadar orang ini udah pernah dapet undangan.
             rowAccentClass = 'jd-row-expired';
-            statusBadge = '<span class="badge badge-wasinvited">Pernah Diundang · Expired</span>';
-            statusCaption = (row.review_cleared && wasSignal)
-              ? '<span class="jd-flag-detail">Undangan lama expired · ditandai aman — bisa dikirim ulang</span>'
-              : '<span class="jd-flag-detail">Undangan lama ga di-checkout — bisa dikirim ulang</span>';
+            statusBadge = '<span class="badge badge-wasinvited">Pernah Diundang \u00b7 Expired</span>';
+            statusCaption = '<span class="jd-flag-detail">Undangan lama ga di-checkout \u2014 bisa dikirim ulang'
+              + (alasanTeks ? ' \u00b7 ' + alasanTeks : '') + lihatSemua + '</span>';
           } else {
-            statusBadge = '<span class="badge badge-ok">Eligible</span>';
-            if (row.review_cleared && wasSignal) {
-              // Ditinjau operator & ditandai aman -- kasih tau + jalan untuk batal.
-              statusCaption = '<span class="jd-flag-detail">Ditandai aman '
-                + '<a href="#" onclick="event.stopPropagation(); jdUnmarkSafe(\'' + row.id + '\'); return false;" style="color:var(--warn,#B4620C);text-decoration:underline;margin-left:2px">batal</a></span>';
+            statusBadge = '<span class="badge badge-ok">Lulus</span>';
+            // Lulus tapi bukan "bersih" -- alasannya tetap disebut, supaya
+            // operator tahu ini lolos karena diperiksa, bukan karena terlewat.
+            if (alasanTeks) {
+              statusCaption = '<span class="jd-flag-detail">' + alasanTeks
+                + (detailBeli ? ' \u2014 ' + detailBeli : '')
+                + (row.review_cleared
+                    ? ' <a href="#" onclick="event.stopPropagation(); jdUnmarkSafe(\'' + row.id + '\'); return false;" style="color:var(--warn,#B4620C);text-decoration:underline;margin-left:2px">batal</a>'
+                    : '')
+                + lihatSemua + '</span>';
             }
           }
         } else {
@@ -2027,7 +2038,11 @@
         // barisnya juga jastip (keterangan dipakai jastip), sudah ditandai aman,
         // atau sudah diproses. Tanpa pembatas ini, hal yang sama tertulis tiga
         // kali di satu baris.
-        var keteranganSudahSebutBeli = isActionable && needsReview && !row.cust_jastip_pasti && !row.orang_sudah_diproses;
+        // Keterangan baris sudah menuliskan rincian pembelian pada hampir semua
+        // kasus. Chip hanya untuk yang TIDAK -- barisnya jastip (keterangan
+        // dipakai jastip), atau sudah diproses (keterangan tidak digambar).
+        var keteranganSudahSebutBeli = isActionable && row.already_purchased
+          && row.vonis_alasan && row.vonis_alasan !== 'bersih' && row.vonis_alasan !== 'jastip';
         var TK_LABEL = { 3: 'Sama persis', 2: 'Varian beda', 1: 'Produk lain' };
         var beliChip = (row.already_purchased && !keteranganSudahSebutBeli)
           ? '<span class="jd-beli-chip' + (row.beli_tingkat === 3 ? ' jd-beli-sama' : '')
@@ -2281,8 +2296,18 @@
       if (dilewati) {
         // Dilewati diam-diam sama buruknya dengan terkirim: operator akan
         // mengira semuanya sudah dikirim.
-        if (!confirm(dilewati + ' dari ' + semua.length + ' baris yang dipilih masih PERLU DITINJAU dan tidak akan dikirimi undangan.\n\n'
+        if (!confirm(dilewati + ' dari ' + semua.length + ' baris yang dipilih DIKUNCI dan tidak akan dikirimi undangan.\n\n'
                    + 'Lanjut kirim untuk ' + rows.length + ' baris sisanya?')) return;
+      }
+      // 'tinjau' BOLEH dikirim -- itu bedanya dengan 'kunci'. Tapi tidak boleh
+      // lewat tanpa disebut, karena justru di sinilah keputusan operator dibutuhkan.
+      var perluCek = rows.filter(function (r) { return r.vonis === 'tinjau'; });
+      if (perluCek.length) {
+        var rinci = {};
+        perluCek.forEach(function (r) { rinci[r.vonis_alasan] = (rinci[r.vonis_alasan] || 0) + 1; });
+        if (!confirm(perluCek.length + ' dari ' + rows.length + ' baris bertanda "Cek Dulu":\n\n'
+                   + Object.keys(rinci).map(function (k) { return '  \u00b7 ' + rinci[k] + ' \u2014 ' + k; }).join('\n')
+                   + '\n\nMereka TETAP akan dikirimi undangan. Lanjut?')) return;
       }
 
       lastBatchHours = hours;
