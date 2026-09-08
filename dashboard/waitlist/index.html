@@ -624,11 +624,11 @@
           <div class="jd-stat-label">Total Pendaftar</div>
           <div class="jd-stat-value" id="jd-stat-total">—</div>
         </div>
-        <div class="jd-stat" onclick="filterByStat('clean')" title="Lihat pendaftar yang eligible (belum diproses, gak ada flag)">
-          <div class="jd-stat-label">Eligible</div>
+        <div class="jd-stat" onclick="filterByStat('clean')" title="Belum diproses, lulus, dan tanpa catatan apa pun — tinggal kirim">
+          <div class="jd-stat-label">Bersih · Tinggal Kirim</div>
           <div class="jd-stat-value ok" id="jd-stat-clean">—</div>
         </div>
-        <div class="jd-stat" onclick="filterByStat('review')" title="Lihat pendaftar yang perlu ditinjau (jastip atau pernah beli)">
+        <div class="jd-stat" onclick="filterByStat('review')" title="Perlu ditinjau + dikunci — semua yang tidak lulus begitu saja">
           <div class="jd-stat-label">Perlu Ditinjau</div>
           <div class="jd-stat-value flagged" id="jd-stat-flagged">—</div>
         </div>
@@ -1025,7 +1025,6 @@
                 <optgroup label="Alokasi">
                   <option value="alokasi_simpan_batch">Simpan batch</option>
                   <option value="alokasi_hapus_batch">Hapus batch</option>
-                  <option value="alokasi_hapus_baris">Hapus baris alokasi</option>
                 </optgroup>
               </select>
               <button class="jd-btn jd-btn-outline" onclick="loadRiwayat()" title="Muat ulang riwayat">↻ Muat ulang</button>
@@ -1324,7 +1323,6 @@
       el.innerHTML = html;
     }
 
-    var jdJastipLoaded = false;
 
     // Cerminan READ-ONLY dari Database Jastip (dikelola di Dashboard Jastip).
     // Dikelompokkan per group_id (1 kartu = 1 komplotan) persis seperti di sana,
@@ -1657,8 +1655,9 @@
     async function loadStats() {
       var r = await Promise.all([
         sbQuery('launch_waitlist_view?select=id'),
-        sbQuery('launch_waitlist_view?select=id&effective_status=eq.pending&needs_review=eq.false'),
-        sbQuery('launch_waitlist_view?select=id&needs_review=eq.true'),
+        // Sama persis dengan filter yang dibuka saat kartunya diklik.
+        sbQuery('launch_waitlist_view?select=id&effective_status=eq.pending&vonis=eq.lulus&vonis_alasan=eq.bersih'),
+        sbQuery('launch_waitlist_view?select=id&vonis=neq.lulus&effective_status=in.(pending,expired)'),
         // BUG YANG DIPERBAIKI: sebelumnya cuma hitung status=invited persis,
         // padahal begitu orang checkout, status-nya PINDAH ke "purchased" --
         // jadi orang yang justru paling berhasil (checkout) malah gak
@@ -1697,15 +1696,21 @@
       var bar  = document.getElementById('jd-action-bar');
       if (keys.length > 0) {
         bar.style.display = 'flex';
-        var perluTinjau = keys.filter(function (k) { return selectedRows[k].needs_review; }).length;
-        var siapKirim   = keys.length - perluTinjau;
+        var nKunci  = keys.filter(function (k) { return selectedRows[k].vonis === 'kunci'; }).length;
+        var nTinjau = keys.filter(function (k) { return selectedRows[k].vonis === 'tinjau'; }).length;
+        var nLulus  = keys.length - nKunci - nTinjau;
+        var rinciSel = [];
+        if (nLulus)  rinciSel.push(nLulus + ' lulus');
+        if (nTinjau) rinciSel.push(nTinjau + ' perlu ditinjau');
+        if (nKunci)  rinciSel.push(nKunci + ' dikunci');
         document.getElementById('jd-action-count').textContent =
           keys.length + ' dipilih (halaman ini)'
-          + (perluTinjau ? ' \u2014 ' + siapKirim + ' siap kirim, ' + perluTinjau + ' perlu ditinjau' : '');
+          + (rinciSel.length > 1 ? ' \u2014 ' + rinciSel.join(', ') : '');
         var btnAman = document.getElementById('jd-btn-tandai-aman');
         if (btnAman) {
-          btnAman.style.display = perluTinjau ? '' : 'none';
-          btnAman.textContent = 'Tandai Aman (' + perluTinjau + ')';
+          var nAman = nKunci + nTinjau;
+          btnAman.style.display = nAman ? '' : 'none';
+          btnAman.textContent = 'Tandai Aman (' + nAman + ')';
         }
       } else {
         bar.style.display = 'none';
@@ -1835,7 +1840,7 @@
       if (sf) q += '&effective_status=eq.' + sf;
       // 'clean' sudah tidak dipakai -- kartu Eligible kini mengarah ke sumbu
       // kelayakan (vonis bersih), bukan sekadar "tidak dikunci".
-      if (cardFlagFilter === 'review')   q += '&vonis=neq.lulus';
+      if (cardFlagFilter === 'review')   q += '&vonis=neq.lulus&effective_status=in.(pending,expired)';
       if (cardFlagFilter === 'eversent') q += '&effective_status=in.(invited,purchased,expired)';
       if (markFilter === 'none')      q += '&mark=is.null';
       else if (markFilter)            q += '&mark=eq.' + markFilter;
@@ -2090,13 +2095,16 @@
         var kembarChip = '';
         if (kembarPasti || kembarDuga) {
           var kembarKet = kembarKirim ? 'sudah ada yang dikirim' : 'belum ada yang dikirim';
+          var kembarKlik = kembarPasti && row.orang_id
+            ? 'jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\')'
+            : 'jdOpenDup(\'' + row.id + '\', \'' + String(row.email || '').replace(/['\\]/g, "\\$&") + '\')';
           kembarChip = '<span class="jd-dup-chip ' + (kembarKirim ? 'jd-dup-terkirim' : 'jd-dup-orang') + '"'
-            + (row.orang_id ? ' onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\')"' : '')
+            + ' onclick="event.stopPropagation(); ' + kembarKlik + '"'
             + ' title="' + (kembarPasti
                 ? 'Dipastikan lewat Customer Database: orang ini punya ' + kembarJml + ' pendaftaran.'
                 : 'Dugaan dari kemiripan email/HP (belum tersambung ke Customer Database).')
               + ' ' + (kembarKirim ? 'Salah satunya SUDAH dikirimi undangan.' : 'Belum ada satu pun yang dikirimi undangan.')
-              + (row.orang_id ? ' Klik untuk lihat semuanya.' : '') + '">'
+              + ' Klik untuk lihat semuanya.">'
             + kembarJml + '\u00d7 daftar \u00b7 ' + kembarKet + '</span>';
         }
 
@@ -3528,7 +3536,7 @@
     // "produk lain (paling aman)", pilih semua, tandai aman sekali jalan --
     // 119 baris yang sebelumnya harus diklik satu per satu.
     async function jdTandaiAmanTerpilih() {
-      var rows = Object.values(selectedRows).filter(function (r) { return r.needs_review; });
+      var rows = Object.values(selectedRows).filter(function (r) { return r.vonis !== 'lulus'; });
       if (!rows.length) return;
 
       // Pecah per sebab, supaya operator tahu APA yang sedang dilepaskan.
@@ -4015,22 +4023,6 @@
       }
     }
 
-    async function deleteAllocation(id) {
-      if (!confirm('Hapus alokasi ini?')) return;
-      try {
-        var res = await fetch(SB_URL + '/rest/v1/launch_allocations?id=eq.' + id, {
-          method: 'DELETE',
-          headers: authHeaders({ 'Prefer': 'return=minimal' })
-        });
-        if (handleAuthExpired(res.status)) return;
-        if (!res.ok) throw new Error('Delete failed');
-        jdCatatAksi('alokasi_hapus_baris', null, null, null, { id: id });
-        showToast('Alokasi dihapus');
-        loadAllocations();
-      } catch(e) {
-        showToast('Gagal hapus', true);
-      }
-    }
 
     // ── EXPORT CSV ───────────────────────────────────────────
     // Export SEMUA pendaftar (semua status), bukan cuma token aktif.
