@@ -760,6 +760,7 @@
                 <option value="r:pernah beli produk lain">&nbsp;&nbsp;&nbsp;· pernah beli produk lain</option>
                 <option value="r:punya banyak email/HP">&nbsp;&nbsp;&nbsp;· punya banyak email/HP</option>
                 <option value="r:daftar lebih dari sekali">&nbsp;&nbsp;&nbsp;· daftar lebih dari sekali</option>
+                <option value="r:mungkin orang yang sama (kembar)">&nbsp;&nbsp;&nbsp;· mungkin orang yang sama (kembar)</option>
                 <option value="r:sudah ditandai aman">&nbsp;&nbsp;&nbsp;· sudah ditandai aman</option>
               </optgroup>
               <optgroup label="Cek dulu — boleh dikirim, tapi dilihat">
@@ -2103,7 +2104,7 @@
         // Chip kemiripan lama cuma dipakai kalau orangnya BELUM ketemu di
         // Customer Database -- kalau sudah ketemu, samaChip lebih dapat dipercaya
         // dan menampilkan keduanya cuma menggandakan peringatan yang sama.
-        var dupChip = (!row.sudah_pelanggan && row.dup_count > 0)
+        var dupChip = (!row.sudah_pelanggan && row.dup_count > 0 && row.dup_bobot >= 70)
           ? '<span class="jd-dup-chip' + (row.dup_claimed ? ' jd-dup-hot' : '') + '" onclick="event.stopPropagation(); jdOpenDup(\'' + row.id + '\', \'' + (row.email || '').replace(/['\\\\]/g, "\\$&") + '\')" title="' +
             (row.dup_claimed
               ? 'Kembarannya SUDAH dapat undangan / sudah beli. Klik untuk lihat.'
