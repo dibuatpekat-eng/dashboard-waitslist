@@ -735,33 +735,43 @@
                 <option value="mark:none">Belum Ditandai</option>
               </optgroup>
             </select>
-            <select id="jd-filter-cust" onchange="jdApplyCustFilter(this.value)" title="Filter berdasarkan Customer Database — bisa digabung dengan filter Tahap/Tanda">
+            <select id="jd-filter-cust" onchange="jdApplyCustFilter(this.value)" title="Siapa orangnya — bisa digabung dengan filter Kelayakan kirim">
               <option value="">Semua Pelanggan</option>
               <optgroup label="Member (pernah beli)">
                 <option value="member">Semua member</option>
-                <option value="notier">Belum bertier</option>
                 <option value="tier1">Atelier</option>
                 <option value="tier2">Maison</option>
                 <option value="tier3">Prive</option>
-              </optgroup>
-              <optgroup label="Kelayakan kirim">
-                <option value="v_lulus">Lulus — aman dikirim bulk</option>
-                <option value="v_bersih">— bersih saja (tanpa catatan apa pun)</option>
-                <option value="v_lulus_catatan">— lulus tapi ada catatan</option>
-                <option value="v_tinjau">Cek dulu</option>
-                <option value="v_kunci">Dikunci</option>
-              </optgroup>
-              <optgroup label="Sudah pernah dapat Rhea/Phi">
-                <option value="beli">Semua yang pernah dapat</option>
-                <option value="beli3">— varian SAMA PERSIS</option>
-                <option value="beli2">— produk sama, varian beda</option>
-                <option value="beli1">— produk lain (paling aman)</option>
+                <option value="notier">Member belum bertier</option>
               </optgroup>
               <optgroup label="Lainnya">
                 <option value="baru">Bukan member (belum pernah beli)</option>
                 <option value="jastip">Bertanda jastip</option>
                 <option value="ganda">Daftar lebih dari sekali (orang sama)</option>
                 <option value="saudara">Pendaftaran lain sudah diproses</option>
+              </optgroup>
+            </select>
+            <select id="jd-filter-vonis" onchange="jdApplyVonisFilter(this.value)" title="Boleh dikirim atau tidak — digabung dengan filter Pelanggan">
+              <option value="">Semua Kelayakan</option>
+              <optgroup label="Lulus — aman dikirim bulk">
+                <option value="lulus">Semua yang lulus</option>
+                <option value="r:bersih">— bersih, tanpa catatan</option>
+                <option value="lulus_catatan">— lulus tapi ada catatan</option>
+                <option value="r:pernah beli produk lain">&nbsp;&nbsp;&nbsp;· pernah beli produk lain</option>
+                <option value="r:punya banyak email/HP">&nbsp;&nbsp;&nbsp;· punya banyak email/HP</option>
+                <option value="r:daftar lebih dari sekali">&nbsp;&nbsp;&nbsp;· daftar lebih dari sekali</option>
+                <option value="r:sudah ditandai aman">&nbsp;&nbsp;&nbsp;· sudah ditandai aman</option>
+              </optgroup>
+              <optgroup label="Cek dulu — boleh dikirim, tapi dilihat">
+                <option value="tinjau">Semua yang perlu dicek</option>
+                <option value="r:sudah punya produk ini, warna/size lain">— sudah punya produk ini, warna/size lain</option>
+                <option value="r:kartunya pakai nama orang lain">— kartunya pakai nama orang lain</option>
+                <option value="r:sudah 2x+ beli produk launch">— sudah 2x+ beli produk launch</option>
+              </optgroup>
+              <optgroup label="Dikunci — tidak bisa dikirim">
+                <option value="kunci">Semua yang dikunci</option>
+                <option value="r:sudah punya varian ini">— sudah punya varian ini</option>
+                <option value="r:jastip">— jastip</option>
               </optgroup>
             </select>
             <select id="jd-filter-variant" onchange="jdApplyVariantFilter(this.value)" title="Filter per variasi produk (8 jenis)">
@@ -1187,6 +1197,13 @@
       custFilter = v || '';
       loadWaitlist(1);
     }
+    // Sumbu kedua, INDEPENDEN dari custFilter -- keduanya digabung dengan AND.
+    // Inilah yang membuat "Atelier yang bersih" bisa dijawab.
+    var vonisFilter = '';
+    function jdApplyVonisFilter(v) {
+      vonisFilter = v || '';
+      loadWaitlist(1);
+    }
     // Filter per variasi (product|color|size). Independen dari filter Tahap/Tanda,
     // jadi bisa dikombinasi (mis. "Phi Auburn S/M" + "Belum Diproses").
     function jdApplyVariantFilter(v) {
@@ -1389,8 +1406,14 @@
       statusSel.value = '';
       var custSel = document.getElementById('jd-filter-cust');
       if (custSel) custSel.value = '';
-      if (which === 'clean')        { cardFlagFilter = 'clean'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending'; }
-      else if (which === 'review')  { cardFlagFilter = 'review'; }
+      vonisFilter = '';
+      var vonSel = document.getElementById('jd-filter-vonis');
+      if (vonSel) vonSel.value = '';
+      // Kartu "Eligible" kini berarti: lulus DAN tanpa catatan apa pun --
+      // persis daftar yang bisa langsung dikirim tanpa dipikir.
+      if (which === 'clean')        { vonisFilter = 'r:bersih'; waitlistStageFilter = 'pending'; statusSel.value = 'stage:pending';
+                                      if (vonSel) vonSel.value = 'r:bersih'; }
+      else if (which === 'review')  { cardFlagFilter = 'review'; }   // kunci + cek dulu
       else if (which === 'invited') { cardFlagFilter = 'eversent'; }
       else if (which === 'member' || which === 'jastip' || which === 'ganda') {
         custFilter = which;
@@ -1417,7 +1440,9 @@
       document.getElementById('jd-filter-status').value = '';
       var custSel2 = document.getElementById('jd-filter-cust');
       if (custSel2) custSel2.value = '';
-      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false; custFilter = '';
+      var vonSel2 = document.getElementById('jd-filter-vonis');
+      if (vonSel2) vonSel2.value = '';
+      cardFlagFilter = ''; waitlistStageFilter = ''; markFilter = ''; waitlistVariantFilter = ''; loyalFilter = false; custFilter = ''; vonisFilter = '';
       var vSel = document.getElementById('jd-filter-variant'); if (vSel) vSel.value = '';
       document.getElementById('jd-search-input').value = email;
       loadWaitlist(1);
@@ -1823,8 +1848,9 @@
       // nyangkut di 'invited' selamanya walau token-nya udah expired. Milih
       // "Expired" di dropdown ini harus beneran nangkep entry yang begitu.
       if (sf) q += '&effective_status=eq.' + sf;
-      if (cardFlagFilter === 'clean')    q += '&needs_review=eq.false';
-      if (cardFlagFilter === 'review')   q += '&needs_review=eq.true';
+      // 'clean' sudah tidak dipakai -- kartu Eligible kini mengarah ke sumbu
+      // kelayakan (vonis bersih), bukan sekadar "tidak dikunci".
+      if (cardFlagFilter === 'review')   q += '&vonis=neq.lulus';
       if (cardFlagFilter === 'eversent') q += '&effective_status=in.(invited,purchased,expired)';
       if (markFilter === 'none')      q += '&mark=is.null';
       else if (markFilter)            q += '&mark=eq.' + markFilter;
@@ -1848,23 +1874,23 @@
       // "tidak ada di Customer Database": 46 orang dikenal di sana lewat
       // reservasi/pre-order tanpa pernah bertransaksi.
       else if (custFilter === 'baru')   q += '&is_loyal=is.false';
-      else if (custFilter === 'v_lulus')  q += '&vonis=eq.lulus';
-      else if (custFilter === 'v_bersih') q += '&vonis=eq.lulus&vonis_alasan=eq.bersih';
-      else if (custFilter === 'v_lulus_catatan') q += '&vonis=eq.lulus&vonis_alasan=neq.bersih';
-      else if (custFilter === 'v_tinjau') q += '&vonis=eq.tinjau';
-      else if (custFilter === 'v_kunci')  q += '&vonis=eq.kunci';
-      else if (custFilter === 'beli')   q += '&already_purchased=is.true';
-      // Tiga tingkat kecocokan -- inilah yang memungkinkan "tandai aman" massal
-      // dikerjakan per kelompok, bukan satu per satu untuk 237 baris.
-      else if (custFilter === 'beli3')  q += '&beli_tingkat=eq.3';
-      else if (custFilter === 'beli2')  q += '&beli_tingkat=eq.2';
-      else if (custFilter === 'beli1')  q += '&beli_tingkat=eq.1';
       else if (custFilter === 'saudara') q += '&orang_sudah_diproses=is.true';
       else if (custFilter === 'ganda')  q += '&orang_jml_baris=gt.1';
       // Satu kolom boolean, bukan `or=(...)`: pencarian nomor HP juga memakai
       // `or=`, dan dua `or` dalam satu URL memberi hasil yang tidak bisa
       // diandalkan -- tanpa terlihat salah di layar.
       else if (custFilter === 'jastip') q += '&cust_jastip_any=is.true';
+
+      // ── Sumbu kelayakan kirim (digabung AND dengan sumbu pelanggan) ──────
+      // 'r:<alasan>' menyaring langsung ke alasannya, jadi sebab dan akibat
+      // tidak lagi jadi dua filter yang berdiri sejajar.
+      if (vonisFilter === 'lulus')            q += '&vonis=eq.lulus';
+      else if (vonisFilter === 'tinjau')      q += '&vonis=eq.tinjau';
+      else if (vonisFilter === 'kunci')       q += '&vonis=eq.kunci';
+      else if (vonisFilter === 'lulus_catatan') q += '&vonis=eq.lulus&vonis_alasan=neq.bersih';
+      else if (vonisFilter.indexOf('r:') === 0) {
+        q += '&vonis_alasan=eq.' + encodeURIComponent(vonisFilter.slice(2));
+      }
       if (search) {
         // JANGAN pakai nama 'esc' di sini -- itu menutupi fungsi global esc()
         // (XSS-escape) di seluruh scope loadWaitlist, bikin render baris error.
