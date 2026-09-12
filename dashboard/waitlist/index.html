@@ -1764,21 +1764,37 @@
       updateActionBar();
     }
 
-    // Kalimat "pernah beli" yang menyebut VARIAN dan KANAL.
-    // Sebelumnya hanya "Pernah beli: Rhea Flare Jacket" -- dan justru varian yang
-    // menentukan keputusan: beli Rhea Breen lalu mendaftar Rhea Auburn itu wajar,
-    // beli Rhea Breen S/M lalu mendaftar Rhea Breen S/M lagi tidak.
+    // Vonis sudah MENJELASKAN ("sudah punya warna/size lain"). Bukti hanya
+    // MENYEBUTKAN barangnya. Dulu keduanya sama-sama menafsirkan, jadi satu
+    // fakta tertulis dua kali dengan kata berbeda:
+    //   "sudah punya produk ini, warna/size lain — Pernah beli produk yang
+    //    sama, varian berbeda: Rhea Flare Jacket Auburn S/M"
+    // Pembacanya harus memastikan sendiri bahwa dua kalimat itu memang satu hal.
     var KANAL_LABEL = { web: 'web', store: 'toko', pos: 'toko', po: 'PO', reservation: 'reservasi', moka: 'Moka' };
-    function jdBeliKalimat(row) {
-      var tk = row.beli_tingkat;
+
+    // Beberapa alasan ditulis panjang di database supaya jelas saat dibaca
+    // sebagai data; di layar ia sudah didampingi buktinya, jadi cukup pendek.
+    var ALASAN_LABEL = {
+      'sudah punya produk ini, warna/size lain': 'sudah punya warna/size lain'
+    };
+
+    function jdBeliBukti(row) {
+      if (!row.already_purchased) return '';
       var varian = [row.beli_warna, row.beli_size].filter(Boolean).map(jdLabel).join(' ');
-      var kepala = tk === 3 ? 'Sudah pernah dapat <strong>varian yang sama persis</strong>'
-                 : tk === 2 ? 'Pernah beli produk yang sama, <strong>varian berbeda</strong>'
-                 : tk === 1 ? 'Pernah beli <strong>produk lain</strong>'
-                 : 'Pernah beli';
-      return kepala + ': ' + esc(row.purchased_product_name || '\u2014')
-        + (varian ? ' ' + esc(varian) : '')
+      return (row.beli_produk_waitlist_jml > 1 ? 'terakhir ' : '')
+        + '<strong>' + esc(row.purchased_product_name || '\u2014')
+        + (varian ? ' ' + esc(varian) : '') + '</strong>'
         + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : '');
+    }
+
+    // Satu kalimat: alasannya, lalu buktinya. Tidak pernah dua-duanya menafsirkan.
+    function jdAlasanLengkap(row) {
+      var a = (row.vonis_alasan && row.vonis_alasan !== 'bersih')
+        ? (ALASAN_LABEL[row.vonis_alasan] || row.vonis_alasan) : '';
+      // Untuk jastip, barang yang pernah dibeli bukan alasannya -- menyebutnya
+      // di sini menggeser perhatian dari hal yang sebenarnya menahan.
+      var b = row.vonis_alasan === 'jastip' ? '' : jdBeliBukti(row);
+      return esc(a) + (a && b ? ' \u2014 ' : '') + b;
     }
 
     // ── WAITLIST ─────────────────────────────────────────────
@@ -1950,9 +1966,8 @@
           //   kunci  -> tidak bisa dikirim sebelum ditandai aman
           //   tinjau -> BISA dikirim, tapi diperingatkan saat bulk
           //   lulus  -> kirim tanpa hambatan
-          var alasanTeks = row.vonis_alasan && row.vonis_alasan !== 'bersih'
-            ? esc(row.vonis_alasan) : '';
-          var detailBeli = row.already_purchased ? jdBeliKalimat(row) : '';
+          // Satu kalimat: alasan + bukti, dirakit di satu tempat.
+          var alasanTeks = jdAlasanLengkap(row);
           var lihatSemua = row.orang_sudah_diproses && row.orang_id
             ? ' <a href="#" onclick="event.stopPropagation(); jdOpenSamePerson(\'' + row.orang_id + '\', \'' + (row.cust_nama || '').replace(/['\\]/g, "\\$&") + '\'); return false;" style="color:var(--text-2);text-decoration:underline">lihat semua pendaftarannya</a>'
             : '';
@@ -1960,15 +1975,11 @@
           if (row.vonis === 'kunci') {
             rowAccentClass = 'jd-row-jastip';
             statusBadge = '<span class="badge badge-flag">Dikunci</span>';
-            statusCaption = '<span class="jd-flag-detail">' + alasanTeks
-              + (detailBeli && row.vonis_alasan !== 'jastip' ? ' \u2014 ' + detailBeli : '')
-              + lihatSemua + '</span>';
+            statusCaption = '<span class="jd-flag-detail">' + alasanTeks + lihatSemua + '</span>';
           } else if (row.vonis === 'tinjau') {
             rowAccentClass = 'jd-row-bought';
             statusBadge = '<span class="badge badge-bought">Perlu Ditinjau</span>';
-            statusCaption = '<span class="jd-flag-detail">' + alasanTeks
-              + (detailBeli ? ' \u2014 ' + detailBeli : '')
-              + lihatSemua + '</span>';
+            statusCaption = '<span class="jd-flag-detail">' + alasanTeks + lihatSemua + '</span>';
           } else if (row.effective_status === 'expired') {
             rowAccentClass = 'jd-row-expired';
             statusBadge = '<span class="badge badge-wasinvited">Pernah Diundang \u00b7 Expired</span>';
@@ -1980,7 +1991,6 @@
             // operator tahu ini lolos karena diperiksa, bukan karena terlewat.
             if (alasanTeks) {
               statusCaption = '<span class="jd-flag-detail">' + alasanTeks
-                + (detailBeli ? ' \u2014 ' + detailBeli : '')
                 + (row.review_cleared
                     ? ' <a href="#" onclick="event.stopPropagation(); jdUnmarkSafe(\'' + row.id + '\'); return false;" style="color:var(--warn,#B4620C);text-decoration:underline;margin-left:2px">batal</a>'
                     : '')
@@ -2062,7 +2072,7 @@
         var TK_LABEL = { 3: 'Sama persis', 2: 'Varian beda', 1: 'Produk lain' };
         var beliChip = (row.already_purchased && !keteranganSudahSebutBeli)
           ? '<span class="jd-beli-chip' + (row.beli_tingkat === 3 ? ' jd-beli-sama' : '')
-            + '" title="' + esc(jdBeliKalimat(row).replace(/<[^>]+>/g, ''))
+            + '" title="' + esc(jdAlasanLengkap(row).replace(/<[^>]+>/g, ''))
             + '. Di luar undangan dari waitlist ini.">Pernah beli'
             + (TK_LABEL[row.beli_tingkat] ? ' \u00b7 ' + TK_LABEL[row.beli_tingkat] : '') + '</span>'
           : '';
@@ -3090,7 +3100,7 @@
                 '</strong></div>' +
               '<div class="jd-dup-why">' + esc(fmtPhone(d.phone)) +
                 ' \u00b7 daftar ' + fmtDate(d.registered_at) +
-                (d.already_purchased ? ' \u00b7 ' + jdBeliKalimat(d).replace(/<[^>]+>/g, '') : '') +
+                (d.already_purchased ? ' \u00b7 ' + jdAlasanLengkap(d).replace(/<[^>]+>/g, '') : '') +
               '</div>' +
             '</div>' +
             '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
