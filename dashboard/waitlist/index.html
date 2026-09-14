@@ -1735,26 +1735,62 @@
     // clearSelection). Tanpa dikatakan, operator wajar mengira "pilih semua"
     // berarti seluruh hasil filter -- lalu mengira sisanya sudah terkirim.
     function toggleSelectAll(el) {
-      var checkboxes = document.querySelectorAll('.jd-row-check');
-      checkboxes.forEach(function(c) {
-        // Only select eligible (pending, not flagged)
-        if (!el.checked || c.dataset.eligible === '1') {
-          c.checked = el.checked;
-          var id = c.dataset.id;
-          if (el.checked && c.dataset.eligible === '1') {
-            selectedRows[id] = JSON.parse(c.dataset.row);
-          } else {
-            delete selectedRows[id];
-          }
-        }
-      });
-      updateActionBar();
-      if (el.checked) {
-        var n = Object.keys(selectedRows).length;
-        var sisa = totalRows - n;
-        showToast(n + ' baris eligible di halaman ini dipilih'
-          + (sisa > 0 ? ' — ' + sisa + ' baris lain di halaman berikutnya belum ikut.' : '.'));
+      var checkboxes = Array.from(document.querySelectorAll('.jd-row-check'));
+
+      if (!el.checked) {
+        checkboxes.forEach(function (c) { c.checked = false; delete selectedRows[c.dataset.id]; });
+        updateActionBar();
+        return;
       }
+
+      // Hanya baris yang boleh diproses. Baris "perlu ditinjau" ikut bisa
+      // dicentang manual (untuk ditandai aman), tapi TIDAK ikut terpilih massal.
+      var calon = checkboxes.filter(function (c) { return !c.disabled && c.dataset.eligible === '1'; });
+
+      // ── Satu orang, satu slot ────────────────────────────────────────────
+      // Kalau dua pendaftaran milik orang yang sama sama-sama ada di daftar ini,
+      // mencentang keduanya berarti dia dapat dua slot. Sebelumnya operator baru
+      // diberi tahu di modal konfirmasi, lalu harus membatalkan dan mencentang
+      // ulang satu per satu -- yang justru membuat bulk tidak terpakai.
+      // Sekarang yang kedua tidak ikut tercentang sejak awal.
+      //
+      // kembar_kunci mencakup dua-duanya: dipastikan lewat Customer Database
+      // DAN dugaan dari email/HP mirip. Yang dugaan sebelumnya tidak pernah
+      // diperingatkan sama sekali (59 baris).
+      var terbaik = {};   // kunci kembar -> checkbox terpilih
+      var dilewati = 0;
+      calon.forEach(function (c) {
+        var r = JSON.parse(c.dataset.row);
+        var kunci = r.kembar_kunci;
+        if (!kunci) { terbaik['baris:' + r.id] = c; return; }
+        var lawan = terbaik[kunci];
+        if (!lawan) { terbaik[kunci] = c; return; }
+        dilewati++;
+        // Yang dipertahankan: vonis lebih baik dulu, lalu yang mendaftar lebih
+        // awal -- siapa yang lebih dulu antre.
+        var rLawan = JSON.parse(lawan.dataset.row);
+        var skor = function (x) { return x.vonis === 'lulus' ? 0 : 1; };
+        var gantiDgn = (skor(r) < skor(rLawan))
+          || (skor(r) === skor(rLawan) && r.registered_at < rLawan.registered_at);
+        if (gantiDgn) terbaik[kunci] = c;
+      });
+
+      var dipilih = {};
+      Object.keys(terbaik).forEach(function (k) { dipilih[terbaik[k].dataset.id] = true; });
+
+      checkboxes.forEach(function (c) {
+        var ambil = !!dipilih[c.dataset.id];
+        c.checked = ambil;
+        if (ambil) selectedRows[c.dataset.id] = JSON.parse(c.dataset.row);
+        else delete selectedRows[c.dataset.id];
+      });
+
+      updateActionBar();
+      var n = Object.keys(selectedRows).length;
+      var sisa = totalRows - calon.length;
+      showToast(n + ' baris dipilih di halaman ini'
+        + (dilewati ? ' \u2014 ' + dilewati + ' dilewati karena orang yang sama sudah terpilih' : '')
+        + (sisa > 0 ? ' \u00b7 ' + sisa + ' baris lain ada di halaman berikutnya.' : '.'));
     }
 
     function clearSelection() {
@@ -2424,7 +2460,10 @@
       // yang menyadarinya. Inilah cara jastip mengakali batas satu-orang-satu-slot.
       var perOrang = {}, tanpaOrang = 0;
       rows.forEach(function (r) {
-        if (r.orang_id) (perOrang[r.orang_id] = perOrang[r.orang_id] || []).push(r);
+        // kembar_kunci, bukan orang_id: kembar DUGAAN (email/HP mirip, belum
+        // tersambung Customer Database) tidak punya orang_id dan dulu lolos
+        // dari peringatan ini sepenuhnya.
+        if (r.kembar_kunci) (perOrang[r.kembar_kunci] = perOrang[r.kembar_kunci] || []).push(r);
         else tanpaOrang++;
       });
       var dobel = Object.keys(perOrang).filter(function (k) { return perOrang[k].length > 1; });
@@ -2432,7 +2471,7 @@
       if (dobel.length) {
         var rinci = dobel.map(function (k) {
           var g = perOrang[k];
-          return '<strong>' + esc(g[0].cust_nama || 'Orang yang sama') + '</strong>: '
+          return '<strong>' + esc(g[0].cust_nama || 'Orang yang sama (dugaan dari email/HP mirip)') + '</strong>: '
                + g.length + ' baris (' + g.map(function (x) { return esc(x.email || '—'); }).join(', ') + ')';
         }).join('<br>');
         dobelHtml = '<div style="margin-top:12px;padding:10px 12px;background:#FBE9E7;border:1px solid #E0A6A0;border-radius:8px;font-size:12.5px;color:#8C1D18">'
@@ -2440,7 +2479,9 @@
           + '<br><span style="color:#A85A54">Batalkan dan centang satu saja kalau ini tidak disengaja.</span></div>';
       }
       // Sudah pernah dapat/memakai slot lewat pendaftaran lain
-      var pernahLain = rows.filter(function (r) { return r.orang_jml_baris > 1 && (!perOrang[r.orang_id] || perOrang[r.orang_id].length === 1); });
+      var pernahLain = rows.filter(function (r) {
+        return r.orang_jml_baris > 1 && (!perOrang[r.kembar_kunci] || perOrang[r.kembar_kunci].length === 1);
+      });
       var pernahHtml = pernahLain.length
         ? '<div style="margin-top:10px;padding:9px 12px;background:#FCF1E3;border:1px solid #E4C48C;border-radius:8px;font-size:12px;color:#7A4A0C">'
           + pernahLain.length + ' orang di daftar ini juga punya pendaftaran lain di waitlist. Cek chip "×daftar" kalau ragu.</div>'
