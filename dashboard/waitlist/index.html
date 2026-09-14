@@ -1781,10 +1781,14 @@
     function jdBeliBukti(row) {
       if (!row.already_purchased) return '';
       var varian = [row.beli_warna, row.beli_size].filter(Boolean).map(jdLabel).join(' ');
-      return (row.beli_produk_waitlist_jml > 1 ? 'terakhir ' : '')
+      var unit = row.beli_unit || 0;
+      var bagian = [];
+      if (unit > 1) bagian.push('<strong>' + unit + ' unit</strong>');
+      bagian.push((row.beli_produk_waitlist_jml > 1 ? 'terakhir ' : '')
         + '<strong>' + esc(row.purchased_product_name || '\u2014')
         + (varian ? ' ' + esc(varian) : '') + '</strong>'
-        + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : '');
+        + (row.beli_kanal ? ' \u00b7 via ' + esc(KANAL_LABEL[row.beli_kanal] || row.beli_kanal) : ''));
+      return bagian.join(' \u00b7 ');
     }
 
     // Satu kalimat: alasannya, lalu buktinya. Tidak pernah dua-duanya menafsirkan.
