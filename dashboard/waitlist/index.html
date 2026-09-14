@@ -1766,13 +1766,11 @@
         var lawan = terbaik[kunci];
         if (!lawan) { terbaik[kunci] = c; return; }
         dilewati++;
-        // Yang dipertahankan: vonis lebih baik dulu, lalu yang mendaftar lebih
-        // awal -- siapa yang lebih dulu antre.
+        // Aturan tunggal: yang mendaftar PALING BARU. Sengaja tanpa pengecualian
+        // -- aturan bertingkat membuat operator bertanya "kenapa yang itu yang
+        // kepilih?" setiap kali hasilnya tidak seperti dugaan.
         var rLawan = JSON.parse(lawan.dataset.row);
-        var skor = function (x) { return x.vonis === 'lulus' ? 0 : 1; };
-        var gantiDgn = (skor(r) < skor(rLawan))
-          || (skor(r) === skor(rLawan) && r.registered_at < rLawan.registered_at);
-        if (gantiDgn) terbaik[kunci] = c;
+        if (r.registered_at > rLawan.registered_at) terbaik[kunci] = c;
       });
 
       var dipilih = {};
@@ -1789,7 +1787,7 @@
       var n = Object.keys(selectedRows).length;
       var sisa = totalRows - calon.length;
       showToast(n + ' baris dipilih di halaman ini'
-        + (dilewati ? ' \u2014 ' + dilewati + ' dilewati karena orang yang sama sudah terpilih' : '')
+        + (dilewati ? ' \u2014 ' + dilewati + ' dilewati: orang yang sama, diambil pendaftaran terbarunya' : '')
         + (sisa > 0 ? ' \u00b7 ' + sisa + ' baris lain ada di halaman berikutnya.' : '.'));
     }
 
